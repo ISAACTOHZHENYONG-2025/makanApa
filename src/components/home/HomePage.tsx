@@ -4,15 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DecideResponseData, RecommendationItem, VenueMatch } from "@/app/api/decide/route";
 import BottomNav from "@/components/layout/BottomNav";
 import { decide, toDecidePayload } from "@/lib/apiClient";
+import { chainKey } from "@/lib/chains";
 import { assessDiet } from "@/lib/diet";
 import { filtersToSearchParams, type FilterDraft } from "@/lib/filters";
+import { formatDistance } from "@/lib/geo";
 import FilterBottomSheet from "./FilterBottomSheet";
 import FoodMatchCard from "./FoodMatchCard";
 import HomeHeader from "./HomeHeader";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import MoreMatchesList from "./MoreMatchesList";
 import SkeletonCard from "./SkeletonCard";
-import { fromRecommendation } from "./foodMatch";
+import { fromRecommendation, priceLabel } from "./foodMatch";
 
 type Status = "loading" | "ready" | "error";
 
@@ -44,6 +46,16 @@ function friendlyError(err: unknown) {
   return "Something went wrong on our side. Try again in a moment.";
 }
 
+// "Why this pick" for a venue moved up from See more, which the server sent without one: its wording, less what
+// the venue matched in the search, e.g. "3.4 km from campus centre, RM8-12, all within budget, halal."
+function promotedReason(match: VenueMatch) {
+  const parts = [`${priceLabel(match)}, ${match.withinBudget ? "all" : "cheaper meals"} within budget`];
+  if (match.distanceMeters !== undefined) parts.unshift(`${formatDistance(match.distanceMeters)} from campus centre`);
+  if (match.isHalal) parts.push("halal");
+  if (match.rating) parts.push(`rated ${match.rating.toFixed(1)}`);
+  return `${parts.join(", ")}.`;
+}
+
 export default function HomePage({ initialFilters, initialData }: HomePageProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   // Set when the header search bar opens the sheet, so the craving box gets the cursor
@@ -61,14 +73,13 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
   const [refining, setRefining] = useState(false);
   const latestRequest = useRef(0);
 
-  // The AI's reading of the craving (spelling fixes, synonyms, "chinese rice" as two things), when there is one and
-  // the quick results didn't already use it; on any failure the quick results stay
-  const refine = useCallback(async (requestId: number, filters: FilterDraft, quickEngine: DecideResponseData["engine"]) => {
-    const payload = toDecidePayload(filters);
-    if (!payload.craving || quickEngine === "ai") return;
+  // The AI's reading of the craving (spelling fixes, synonyms, "chinese rice" as two things), when the server says
+  // one could still change the quick results; on any failure the quick results stay
+  const refine = useCallback(async (requestId: number, filters: FilterDraft, quick: DecideResponseData) => {
+    if (!quick.aiCanRefine) return;
     setRefining(true);
     try {
-      const smart = await decide(payload);
+      const smart = await decide(toDecidePayload(filters));
       if (requestId !== latestRequest.current || smart.engine !== "ai") return;
       setRecommendations(smart.recommendations);
       setFetchedMoreMatches(smart.moreMatches);
@@ -103,7 +114,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
         setStatus("error");
         return;
       }
-      await refine(requestId, filters, quick.engine);
+      await refine(requestId, filters, quick);
     },
     [refine],
   );
@@ -112,7 +123,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
     // The server usually sent the quick results with the page; then only the AI's reading is left to fetch.
     // Apart from the "Refining…" hint, state is only set after a request resolves.
     if (initialData) {
-      void refine(++latestRequest.current, initialFilters, initialData.engine);
+      void refine(++latestRequest.current, initialFilters, initialData);
     } else {
       void loadMatches(initialFilters);
     }
@@ -127,11 +138,25 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
     items.map((item) => ({ item, ...assessDiet(item.diet, dietFilter) })).filter((entry) => entry.fits);
   const assessedTop = assess(recommendations);
   const assessedMore = assess(fetchedMoreMatches);
-  const matches = assessedTop
-    .filter((entry) => entry.unconfirmed.length === 0)
-    .map((entry, index) => fromRecommendation(entry.item, index, fetchedBudget));
+  const confirmedTop = assessedTop.filter((entry) => entry.unconfirmed.length === 0);
+  const confirmedMore = assessedMore.filter((entry) => entry.unconfirmed.length === 0);
+  // Top picks a newly ticked tag hid are filled from See more's confirmed venues, in the server's order and, like
+  // the server's top 3, one branch per chain
+  const topChains = new Set(confirmedTop.map((entry) => chainKey(entry.item.venueName)));
+  const promoted = new Set<VenueMatch>();
+  for (const { item } of confirmedMore) {
+    if (confirmedTop.length + promoted.size >= 3) break;
+    const key = chainKey(item.venueName);
+    if (topChains.has(key)) continue;
+    topChains.add(key);
+    promoted.add(item);
+  }
+  const matches = [
+    ...confirmedTop.map((entry) => entry.item),
+    ...[...promoted].map((item) => ({ ...item, reasoning: promotedReason(item) })),
+  ].map((item, index) => fromRecommendation(item, index, fetchedBudget));
   const moreMatches = [
-    ...assessedMore.filter((entry) => entry.unconfirmed.length === 0),
+    ...confirmedMore.filter((entry) => !promoted.has(entry.item)),
     ...[...assessedTop, ...assessedMore].filter((entry) => entry.unconfirmed.length > 0),
   ].map(({ item, unconfirmed }) => ({ match: item as VenueMatch, unconfirmed }));
 

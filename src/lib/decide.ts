@@ -5,6 +5,7 @@ import { googleMapsUrl } from "@/lib/mapsLinks";
 import { assessDiet, normalizeVenueDiet, type DietFields } from "@/lib/diet";
 import { UM_CAMPUS_CENTER, distanceMeters, formatDistance } from "@/lib/geo";
 import { venueArea } from "@/lib/area";
+import { chainKey } from "@/lib/chains";
 import {
   EMPTY_QUERY,
   compileQuery,
@@ -66,6 +67,9 @@ export interface DecideResponseData {
   engine: "ai" | "fallback";
   // How the craving was read, for showing back to the student
   query: SearchQuery;
+  // True when asking again without skipAi could bring the AI's reading: there is a craving, no AI reading was used
+  // or cached, and the AI is set up and not paused after a 429. The page skips its refinement request otherwise.
+  aiCanRefine: boolean;
 }
 
 // Off-campus spots, included whenever they are within the chosen distance. Coordinates are from Google Places.
@@ -205,24 +209,6 @@ type Candidate = {
   exact: number;
 };
 
-// First words that don't identify a chain, so "Kafe Sains" and "Kafe Bahasa" stay separate places, and so do
-// "SS2 Rising Kopitiam" and "SS2 Durian Glasshause".
-const GENERIC_FIRST_WORDS = new Set([
-  "kafe", "cafe", "restoran", "restaurant", "kedai", "warung", "the", "nasi", "gerai", "medan", "food",
-  "ss2", "seksyen", "section", "pj",
-]);
-
-// Branches of one chain share a key: "KFC Jalan Universiti DT" and "KFC Gateway Mall" are both "kfc".
-function chainKey(name: string) {
-  const normalised = name
-    .toLowerCase()
-    .replace(/\(.*?\)/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-  const first = normalised.split(" ")[0];
-  return first && !GENERIC_FIRST_WORDS.has(first) ? first : normalised;
-}
-
 const nearness = (c: Candidate) => c.match.distanceMeters ?? UNKNOWN_DISTANCE_M;
 
 // Top 3 holds at most one branch per chain: the nearest of that chain's branches that match the search as well as
@@ -252,7 +238,8 @@ function pickTopThree(ranked: Candidate[]): { top: Candidate[]; rest: Candidate[
   return { top, rest: ranked.filter((c) => !used.has(c)) };
 }
 
-function toVenueMatch(venue: Venue, price: PriceRange, budget: number): VenueMatch {
+// Everything on the card except withinBudget, which depends on the search's budget
+function toVenueMatch(venue: Venue, price: PriceRange): Omit<VenueMatch, "withinBudget"> {
   const hasCoords = typeof venue.latitude === "number" && typeof venue.longitude === "number";
   const meters = hasCoords
     ? Math.round(distanceMeters(UM_CAMPUS_CENTER, { latitude: venue.latitude!, longitude: venue.longitude! }))
@@ -263,7 +250,6 @@ function toVenueMatch(venue: Venue, price: PriceRange, budget: number): VenueMat
     venueName: venue.name,
     priceMinMYR: price.min,
     priceMaxMYR: price.max,
-    withinBudget: budgetComfort(price, budget) === 0,
     isHalal: venue.isHalal === "halal", // only a confirmed halal venue carries the badge
     isVegetarian: venue.vegetarian === "yes" || venue.vegan === "yes",
     isVegan: venue.vegan === "yes",
@@ -328,6 +314,32 @@ function buildVocabulary(venues: Venue[]): Vocabulary {
     areas: [...areas].sort(),
     serves: [...serves].sort((a, b) => b[1] - a[1]).slice(0, PROMPT_SERVES_CAP).map(([item]) => item),
   };
+}
+
+// A venue's search data that is the same for every search, worked out once per venue list. Venues with no usable
+// price are left out, as no search can show them.
+type IndexedVenue = { venue: Venue; price: PriceRange; match: Omit<VenueMatch, "withinBudget">; searchText: string };
+type VenueIndex = { venues: IndexedVenue[]; vocab: Vocabulary };
+
+// By the list loadVenues returned (or FALLBACK_CAMPUS_VENUES), so a refreshed list gets a new index and the old
+// one goes with the old list
+const venueIndexes = new WeakMap<Venue[], VenueIndex>();
+
+// The list plus the off-campus spots it doesn't already have, ready to search
+function indexVenues(loaded: Venue[]): VenueIndex {
+  const cached = venueIndexes.get(loaded);
+  if (cached) return cached;
+  const knownPlaceIds = new Set(loaded.map((v) => v.placeId).filter(Boolean));
+  const all = [...loaded, ...OFF_CAMPUS_DRIVING_HOTSPOTS.filter((v) => !knownPlaceIds.has(v.placeId))];
+  const index: VenueIndex = {
+    venues: all.flatMap((venue) => {
+      const price = venuePriceRange(venue);
+      return price ? [{ venue, price, match: toVenueMatch(venue, price), searchText: venueSearchText(venue) }] : [];
+    }),
+    vocab: buildVocabulary(all),
+  };
+  venueIndexes.set(loaded, index);
+  return index;
 }
 
 // The AI's readings, by folded craving. Map order is insertion order, so the first key is the oldest.
@@ -416,6 +428,8 @@ async function fetchVenues(): Promise<Venue[]> {
       venues.push(normalizeVenueDiet({ id: docSnap.id, ...(docSnap.data() as Omit<Venue, "id">) }));
     });
     venueCache = { at: Date.now(), venues };
+    // Built here, in the background refresh, so no search waits for it
+    if (venues.length > 0) indexVenues(venues);
     return venues;
   } catch (err) {
     console.warn("Could not fetch venues from Firestore, proceeding with the last list or the fallback:", err);
@@ -448,20 +462,18 @@ export async function decideMatches(body: Partial<DecideRequestPayload>): Promis
         ? body.maxDistanceKm
         : DEFAULT_MAX_DISTANCE_KM;
 
-  // 1. Load venues from Firestore (cached briefly so every tap doesn't re-read the whole collection)
-  let venues = await loadVenues();
-  if (venues.length === 0) venues = FALLBACK_CAMPUS_VENUES;
-  const knownPlaceIds = new Set(venues.map((v) => v.placeId).filter(Boolean));
-  venues = [...venues, ...OFF_CAMPUS_DRIVING_HOTSPOTS.filter((v) => !knownPlaceIds.has(v.placeId))];
+  // 1. Load venues from Firestore (cached briefly so every tap doesn't re-read the whole collection), with their
+  // search data worked out once per list
+  const loaded = await loadVenues();
+  const { venues, vocab } = indexVenues(loaded.length > 0 ? loaded : FALLBACK_CAMPUS_VENUES);
 
   // 2. Read the craving into areas and food groups: code's reading (commas split it; known area names and food
   // aliases are recognised), and the AI's when it is cached or can be fetched
-  const vocab = buildVocabulary(venues);
   const localQuery = craving ? parseQueryLocally(craving, vocab.areas) : EMPTY_QUERY;
   let aiQuery: SearchQuery | undefined;
+  const apiKey = process.env.GROQ_API_KEY;
   if (craving) {
     const key = queryKey(craving);
-    const apiKey = process.env.GROQ_API_KEY;
     aiQuery = cachedQuery(key);
     if (!aiQuery && apiKey && !body.skipAi && Date.now() >= aiPausedUntil) {
       try {
@@ -480,16 +492,15 @@ export async function decideMatches(body: Partial<DecideRequestPayload>): Promis
     // A named area means the student wants to go there, so the distance limit doesn't apply
     const distanceLimitM = q.areas.length > 0 || maxDistanceKm === null ? null : maxDistanceKm * 1000;
     const matchGroups = compileQuery(q);
-    return venues.flatMap((venue) => {
-      const price = venuePriceRange(venue);
-      if (!price || !fitsBudget(price, maxBudget)) return [];
+    return venues.flatMap(({ venue, price, match: base, searchText }) => {
+      if (!fitsBudget(price, maxBudget)) return [];
       const diet = assessDiet(venue, dietaryRestrictions);
       if (!diet.fits) return [];
-      const match = toVenueMatch(venue, price, maxBudget);
-      if (distanceLimitM !== null && match.distanceMeters !== undefined && match.distanceMeters > distanceLimitM) return [];
-      if (q.areas.length > 0 && !(match.area && q.areas.includes(match.area))) return [];
-      const { hits, exact } = matchGroups(venueSearchText(venue));
+      if (distanceLimitM !== null && base.distanceMeters !== undefined && base.distanceMeters > distanceLimitM) return [];
+      if (q.areas.length > 0 && !(base.area && q.areas.includes(base.area))) return [];
+      const { hits, exact } = matchGroups(searchText);
       if (q.groups.length > 0 && hits.length === 0) return [];
+      const match = { ...base, withinBudget: budgetComfort(price, maxBudget) === 0 };
       return [{ venue, price, match, unconfirmed: diet.unconfirmed, hits, exact }];
     });
   };
@@ -532,5 +543,7 @@ export async function decideMatches(body: Partial<DecideRequestPayload>): Promis
     moreMatches: [...rest, ...unconfirmed].map((c) => c.match),
     engine,
     query,
+    // A reading this request had (used, or rejected for losing the search) would come back the same from the cache
+    aiCanRefine: Boolean(craving && !aiQuery && apiKey && Date.now() >= aiPausedUntil),
   };
 }
