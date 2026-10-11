@@ -4,15 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DecideResponseData, RecommendationItem, VenueMatch } from "@/app/api/decide/route";
 import BottomNav from "@/components/layout/BottomNav";
 import { decide, toDecidePayload } from "@/lib/apiClient";
+import { chainKey } from "@/lib/chains";
 import { assessDiet } from "@/lib/diet";
 import { filtersToSearchParams, type FilterDraft } from "@/lib/filters";
+import { formatDistance } from "@/lib/geo";
 import FilterBottomSheet from "./FilterBottomSheet";
 import FoodMatchCard from "./FoodMatchCard";
 import HomeHeader from "./HomeHeader";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import MoreMatchesList from "./MoreMatchesList";
 import SkeletonCard from "./SkeletonCard";
-import { fromRecommendation } from "./foodMatch";
+import { fromRecommendation, priceLabel } from "./foodMatch";
 
 type Status = "loading" | "ready" | "error";
 
@@ -42,6 +44,16 @@ function friendlyError(err: unknown) {
     return "Couldn't reach makanApa. Check your connection and try again.";
   }
   return "Something went wrong on our side. Try again in a moment.";
+}
+
+// "Why this pick" for a venue moved up from See more, which the server sent without one: its wording, less what
+// the venue matched in the search, e.g. "3.4 km from campus centre, RM8-12, all within budget, halal."
+function promotedReason(match: VenueMatch) {
+  const parts = [`${priceLabel(match)}, ${match.withinBudget ? "all" : "cheaper meals"} within budget`];
+  if (match.distanceMeters !== undefined) parts.unshift(`${formatDistance(match.distanceMeters)} from campus centre`);
+  if (match.isHalal) parts.push("halal");
+  if (match.rating) parts.push(`rated ${match.rating.toFixed(1)}`);
+  return `${parts.join(", ")}.`;
 }
 
 export default function HomePage({ initialFilters, initialData }: HomePageProps) {
@@ -126,11 +138,25 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
     items.map((item) => ({ item, ...assessDiet(item.diet, dietFilter) })).filter((entry) => entry.fits);
   const assessedTop = assess(recommendations);
   const assessedMore = assess(fetchedMoreMatches);
-  const matches = assessedTop
-    .filter((entry) => entry.unconfirmed.length === 0)
-    .map((entry, index) => fromRecommendation(entry.item, index, fetchedBudget));
+  const confirmedTop = assessedTop.filter((entry) => entry.unconfirmed.length === 0);
+  const confirmedMore = assessedMore.filter((entry) => entry.unconfirmed.length === 0);
+  // Top picks a newly ticked tag hid are filled from See more's confirmed venues, in the server's order and, like
+  // the server's top 3, one branch per chain
+  const topChains = new Set(confirmedTop.map((entry) => chainKey(entry.item.venueName)));
+  const promoted = new Set<VenueMatch>();
+  for (const { item } of confirmedMore) {
+    if (confirmedTop.length + promoted.size >= 3) break;
+    const key = chainKey(item.venueName);
+    if (topChains.has(key)) continue;
+    topChains.add(key);
+    promoted.add(item);
+  }
+  const matches = [
+    ...confirmedTop.map((entry) => entry.item),
+    ...[...promoted].map((item) => ({ ...item, reasoning: promotedReason(item) })),
+  ].map((item, index) => fromRecommendation(item, index, fetchedBudget));
   const moreMatches = [
-    ...assessedMore.filter((entry) => entry.unconfirmed.length === 0),
+    ...confirmedMore.filter((entry) => !promoted.has(entry.item)),
     ...[...assessedTop, ...assessedMore].filter((entry) => entry.unconfirmed.length > 0),
   ].map(({ item, unconfirmed }) => ({ match: item as VenueMatch, unconfirmed }));
 
