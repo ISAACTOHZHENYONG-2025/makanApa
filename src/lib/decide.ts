@@ -67,6 +67,9 @@ export interface DecideResponseData {
   engine: "ai" | "fallback";
   // How the craving was read, for showing back to the student
   query: SearchQuery;
+  // True when asking again without skipAi could bring the AI's reading: there is a craving, no AI reading was used
+  // or cached, and the AI is set up and not paused after a 429. The page skips its refinement request otherwise.
+  aiCanRefine: boolean;
 }
 
 // Off-campus spots, included whenever they are within the chosen distance. Coordinates are from Google Places.
@@ -442,9 +445,9 @@ export async function decideMatches(body: Partial<DecideRequestPayload>): Promis
   const vocab = buildVocabulary(venues);
   const localQuery = craving ? parseQueryLocally(craving, vocab.areas) : EMPTY_QUERY;
   let aiQuery: SearchQuery | undefined;
+  const apiKey = process.env.GROQ_API_KEY;
   if (craving) {
     const key = queryKey(craving);
-    const apiKey = process.env.GROQ_API_KEY;
     aiQuery = cachedQuery(key);
     if (!aiQuery && apiKey && !body.skipAi && Date.now() >= aiPausedUntil) {
       try {
@@ -515,5 +518,7 @@ export async function decideMatches(body: Partial<DecideRequestPayload>): Promis
     moreMatches: [...rest, ...unconfirmed].map((c) => c.match),
     engine,
     query,
+    // A reading this request had (used, or rejected for losing the search) would come back the same from the cache
+    aiCanRefine: Boolean(craving && !aiQuery && apiKey && Date.now() >= aiPausedUntil),
   };
 }

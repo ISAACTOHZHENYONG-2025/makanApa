@@ -61,14 +61,13 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
   const [refining, setRefining] = useState(false);
   const latestRequest = useRef(0);
 
-  // The AI's reading of the craving (spelling fixes, synonyms, "chinese rice" as two things), when there is one and
-  // the quick results didn't already use it; on any failure the quick results stay
-  const refine = useCallback(async (requestId: number, filters: FilterDraft, quickEngine: DecideResponseData["engine"]) => {
-    const payload = toDecidePayload(filters);
-    if (!payload.craving || quickEngine === "ai") return;
+  // The AI's reading of the craving (spelling fixes, synonyms, "chinese rice" as two things), when the server says
+  // one could still change the quick results; on any failure the quick results stay
+  const refine = useCallback(async (requestId: number, filters: FilterDraft, quick: DecideResponseData) => {
+    if (!quick.aiCanRefine) return;
     setRefining(true);
     try {
-      const smart = await decide(payload);
+      const smart = await decide(toDecidePayload(filters));
       if (requestId !== latestRequest.current || smart.engine !== "ai") return;
       setRecommendations(smart.recommendations);
       setFetchedMoreMatches(smart.moreMatches);
@@ -103,7 +102,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
         setStatus("error");
         return;
       }
-      await refine(requestId, filters, quick.engine);
+      await refine(requestId, filters, quick);
     },
     [refine],
   );
@@ -112,7 +111,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
     // The server usually sent the quick results with the page; then only the AI's reading is left to fetch.
     // Apart from the "Refining…" hint, state is only set after a request resolves.
     if (initialData) {
-      void refine(++latestRequest.current, initialFilters, initialData.engine);
+      void refine(++latestRequest.current, initialFilters, initialData);
     } else {
       void loadMatches(initialFilters);
     }
