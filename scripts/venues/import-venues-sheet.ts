@@ -8,7 +8,7 @@
 // Blank cells leave that field as it is (a venue with no answer already counts as unknown). Rows with bad values are skipped.
 
 import * as fs from "fs";
-import { collection, deleteField, doc, getDocs, writeBatch, type FieldValue } from "firebase/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { normalizeVenueDiet } from "../../src/lib/diet";
 import type { DietAnswer, HalalStatus, Venue } from "../../src/lib/types";
 import { formatPriceRange, parsePriceRange, venuePriceRange } from "../../src/lib/price";
@@ -109,7 +109,7 @@ runScript(async () => {
 
   const db = connectFirestore();
   const venues = new Map(
-    (await getDocs(collection(db, "venues"))).docs.map((d) => [d.id, d.data() as Venue]),
+    (await db.collection("venues").get()).docs.map((d) => [d.id, d.data() as Venue]),
   );
 
   const updates: { id: string; name: string; data: Update }[] = [];
@@ -197,7 +197,7 @@ runScript(async () => {
       data.priceMinMYR = price.min;
       data.priceMaxMYR = price.max;
       // The old single price is replaced by the range
-      if (venue.avgPriceMYR !== undefined) data.avgPriceMYR = deleteField();
+      if (venue.avgPriceMYR !== undefined) data.avgPriceMYR = FieldValue.delete();
       const was = venuePriceRange(venue);
       changes.push(`price ${was ? `RM${formatPriceRange(was)}` : "blank"} -> RM${formatPriceRange(price)}`);
       // Imported venues carry one placeholder menu item; keep it at the cheapest usual meal.
@@ -223,8 +223,8 @@ runScript(async () => {
     return;
   }
   for (let i = 0; i < updates.length; i += 400) {
-    const batch = writeBatch(db);
-    for (const u of updates.slice(i, i + 400)) batch.update(doc(db, "venues", u.id), u.data);
+    const batch = db.batch();
+    for (const u of updates.slice(i, i + 400)) batch.update(db.collection("venues").doc(u.id), u.data);
     await batch.commit();
   }
   if (updates.length > 0) console.log(`Updated ${updates.length} venue(s) in Firestore.`);

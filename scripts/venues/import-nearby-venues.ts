@@ -20,7 +20,6 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { collection, getDocs, doc, writeBatch } from "firebase/firestore";
 import type { Venue } from "../../src/lib/types";
 import { UM_CAMPUS_CENTER, distanceMeters, type LatLng } from "../../src/lib/geo";
 import type { PriceRange } from "../../src/lib/price";
@@ -494,7 +493,7 @@ async function main() {
 
   // 2. Compare with what's already in Firestore
   const db = connectFirestore();
-  const existing = (await getDocs(collection(db, "venues"))).docs.map((d) => ({ id: d.id, ...(d.data() as Venue) }));
+  const existing = (await db.collection("venues").get()).docs.map((d) => ({ id: d.id, ...(d.data() as Venue) }));
   const existingByPlaceId = new Map(existing.map((v) => [v.placeId ?? v.id, v]));
 
   const sameAsExisting = (venue: ImportedVenue) =>
@@ -543,10 +542,10 @@ async function main() {
     ...toRefresh.map((r) => ({ id: r.id, data: r.data, merge: true })),
   ];
   for (let i = 0; i < writes.length; i += 400) {
-    const batch = writeBatch(db);
+    const batch = db.batch();
     for (const w of writes.slice(i, i + 400)) {
-      if (w.merge) batch.update(doc(db, "venues", w.id), w.data);
-      else batch.set(doc(db, "venues", w.id), w.data);
+      if (w.merge) batch.update(db.collection("venues").doc(w.id), w.data);
+      else batch.set(db.collection("venues").doc(w.id), w.data);
     }
     await batch.commit();
   }
