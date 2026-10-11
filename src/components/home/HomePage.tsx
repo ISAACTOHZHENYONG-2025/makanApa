@@ -35,6 +35,15 @@ function countChanges(applied: FilterDraft, fetched: FilterDraft) {
   return changes;
 }
 
+// What went wrong and what to do, in plain words; the technical detail goes to the console.
+// fetch() itself throws a TypeError when the request never reaches the server.
+function friendlyError(err: unknown) {
+  if (err instanceof TypeError || (typeof navigator !== "undefined" && !navigator.onLine)) {
+    return "Couldn't reach makanApa. Check your connection and try again.";
+  }
+  return "Something went wrong on our side. Try again in a moment.";
+}
+
 export default function HomePage({ initialFilters, initialData }: HomePageProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   // Set when the header search bar opens the sheet, so the craving box gets the cursor
@@ -89,7 +98,8 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
         setStatus("ready");
       } catch (err) {
         if (requestId !== latestRequest.current) return;
-        setError(err instanceof Error ? err.message : "Something went wrong.");
+        console.error("Could not load recommendations:", err);
+        setError(friendlyError(err));
         setStatus("error");
         return;
       }
@@ -138,18 +148,18 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
     window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
   };
 
-  const applyFilters = () => {
-    setApplied(draft);
+  // From the sheet's "Show results", or a header chip's remove button
+  const applyFilters = (next: FilterDraft) => {
+    setApplied(next);
     setSheetOpen(false);
     // Keeps the filters on refresh. replaceState neither reloads nor remounts the page.
-    window.history.replaceState(null, "", `/?${filtersToSearchParams(draft).toString()}`);
+    window.history.replaceState(null, "", `/?${filtersToSearchParams(next).toString()}`);
     // A newly ticked diet tag only hides cards, so it needs no request
-    if (!fetchedFor || countChanges(draft, fetchedFor) > 0) search(draft);
+    if (!fetchedFor || countChanges(next, fetchedFor) > 0) search(next);
   };
 
   const topCount = matches.length;
   const moreCount = moreMatches.length;
-  const totalMatches = topCount + moreCount;
   const countLabel = `${topCount} top pick${topCount === 1 ? "" : "s"}${moreCount > 0 ? ` · ${moreCount} more` : ""}`;
   const announcement =
     status === "loading"
@@ -158,12 +168,10 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
         ? `Couldn't load recommendations. ${error}`
         : countLabel.replace(" · ", ", ");
 
-  const barAction =
-    status === "error"
-      ? { label: "Try again", onAction: () => search(applied) }
-      : status === "ready"
-        ? { label: "Refine search", onAction: () => openSheet(false) }
-        : { label: "Finding meals…", onAction: undefined };
+  // The sticky bar only shows when it says something the header doesn't: a search in progress, or a retry after an
+  // error. With results showing, the header's search bar and Filters chip already open the sheet.
+  // It is disabled while loading, so its only action is the retry.
+  const barLabel = status === "error" ? "Try again" : status === "loading" ? "Finding meals…" : undefined;
   // What the craving was read as, e.g. ["Section 17", "chinese", "rice"]
   const queryTags = query ? [...query.areas, ...query.groups.map((g) => g.label)] : [];
   // Not while a new search is loading: the old request's flag may still be set
@@ -174,11 +182,13 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
       <div className="w-full max-w-[420px] bg-background min-h-dvh flex flex-col relative shadow-2xl">
         <HomeHeader
           filters={applied}
+          onChange={applyFilters}
           onOpenFilters={() => openSheet(false)}
           onOpenSearch={() => openSheet(true)}
         />
 
-        <main className="flex-1 px-3 pt-3 flex flex-col gap-3 pb-24">
+        {/* Room for the last card to scroll clear of the sticky bar, when it shows */}
+        <main className={`flex-1 px-3 pt-3 flex flex-col gap-3 ${barLabel ? "pb-24" : "pb-6"}`}>
           <p aria-live="polite" className="sr-only" role="status">
             {announcement}
           </p>
@@ -298,16 +308,15 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
 
         <BottomNav
           active="explore"
-          actionBadge={status === "ready" ? `${totalMatches} Options` : undefined}
-          actionLabel={barAction.label}
+          actionLabel={barLabel}
           disabled={status === "loading"}
-          onAction={barAction.onAction}
+          onAction={() => search(applied)}
         />
 
         <FilterBottomSheet
           draft={draft}
           focusCraving={focusCraving}
-          onApply={applyFilters}
+          onApply={() => applyFilters(draft)}
           onChange={setDraft}
           onClose={() => setSheetOpen(false)}
           open={sheetOpen}

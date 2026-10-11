@@ -56,6 +56,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <head>
+        {/* The icon font file comes from fonts.gstatic.com, which the browser only learns about once the stylesheet
+            has loaded. Connecting up front saves those round trips before the page shows. (React already preloads
+            the stylesheet itself, so fonts.googleapis.com needs no hint.) */}
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={ICON_FONT_URL} />
       </head>
       <body className="min-h-full flex flex-col font-sans">{children}</body>

@@ -182,7 +182,7 @@ The layout architecture employs a responsive fluid grid that prioritizes single-
 - **Desktop (>= 1024px)**: 12-column containerized layout capped at a maximum width of `1280px`. Left rail for campus hub filters and navigation (3 columns), central feed for vendor cards and wait-time live charts (6 columns), and right sticky panel for order batching, queue status, and nutrition summaries (3 columns).
 
 ### Viewport Padding & Sticky Overlay Rules
-- **Scroll Container Bottom Inset**: The main scroll container on mobile must apply a bottom padding of `pb-24` (`6rem` / `96px`) to ensure the lowest card (e.g., card #3) scrolls completely past the floating sticky "Find My Optimal Meal" bar without visual obscuration or cut-offs.
+- **Scroll Container Bottom Inset**: While the floating sticky action bar is showing, the main scroll container on mobile applies a bottom padding of `pb-24` (`6rem` / `96px`) so the lowest card scrolls completely past the bar without being covered. When the bar is hidden, `pb-6` is enough.
 
 ### Spacing Usage
 - `space-xs` (4px): Metric gaps, chip icon-to-label spacing, badge interior padding.
@@ -220,14 +220,15 @@ To balance zero-latency UI feedback with optimal API token usage and cost effici
 
 ### Buttons
 - **Primary Action (Default / Active)**: Emerald fill (`#00873C`, `primary-fill`), white text (`#FFFFFF`), `14px` bold, pill shape (`9999px`), `48px` height on mobile for touch accessibility. Hover/active shifts to `#006F31`.
-- **Primary Action (One-Tap Flow)**: There is no stale state. Once results are showing, the sticky bar reads "Refine search" and opens the filter sheet, where "Show results" runs the search.
+- **Primary Action (One-Tap Flow)**: There is no stale state. "Show results" in the filter sheet runs the search. Once results are showing, the header's search bar and Filters chip open the sheet, so the sticky bar is hidden.
 - **Secondary / Outline**: Transparent background, `1.5px` border in `#00B14F`, text in `primary-ink` (`#007A33`), pill shape.
 - **Ghost Action**: Transparent background with neutral text (`#1E2329`), subtle hover fill `#F1F3F5`.
 
 ### Floating Sticky Action Bar
 - **Positioning**: Fixed to viewport bottom, `16px` above bottom navigation dock, wrapped in Level 3 elevation.
 - **Dimensions**: Full-width minus `32px` mobile horizontal margins (`w-[calc(100%-2rem)]`), height `52px`.
-- **Layout**: Contains primary CTA label, left-aligned action icon (the Material `bolt` icon), and right-aligned match count badge (`3 Options`).
+- **Layout**: Contains the CTA label with a left-aligned action icon (the Material `bolt` icon), and an optional right-aligned badge.
+- **When it shows**: Only when it says something the header doesn't: "Finding meals…" (disabled) while a search runs, and "Try again" after an error. It is hidden while results are showing; the result count lives beside the "Top picks" heading.
 
 ### Chips & Filter Pills
 - Inactive: Background `#FFFFFF`, border `1px solid #E9ECEF`, text `#1E2329`, pill-shaped, height `36px`.
@@ -253,4 +254,4 @@ To balance zero-latency UI feedback with optimal API token usage and cost effici
 ### Form Inputs & Search Fields
 - Height `48px`, background `#FFFFFF`, border `1px solid #DEE2E6`, radius `12px`.
 - Focus state: Border shifts to `#00B14F` with a soft outer ring `0 0 0 3px rgba(0, 177, 79, 0.15)`. Search fields integrate a leading magnifying icon and trailing clear button.
-- The sticky header has a search bar that opens the filter sheet with the craving box focused.
+- The sticky header has a search bar, on the same row as the logo, that opens the filter sheet with the craving box focused. Keeping them on one row leaves more of a phone screen for results.

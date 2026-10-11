@@ -55,20 +55,18 @@ export default function FoodMatchCard({ match, insightLabel }: FoodMatchCardProp
           </div>
         </div>
 
-        <div className="bg-surface-container border border-hairline rounded-xl p-2.5 flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            {match.serves ? (
-              <>
-                <span className="text-[11px] uppercase tracking-wider font-bold text-primary-ink block leading-none">
-                  Serves
-                </span>
-                <span className="text-[13px] font-bold text-on-surface truncate block capitalize">{match.serves}</span>
-              </>
-            ) : (
-              <span className="text-xs font-semibold text-on-surface-variant">Typical meal price range shown</span>
-            )}
+        {/* Nothing to say when nobody has filled in what the venue serves */}
+        {match.serves ? (
+          <div className="bg-surface-container border border-hairline rounded-xl p-2.5 min-w-0">
+            <span className="text-[11px] uppercase tracking-wider font-bold text-primary-ink block leading-none">
+              Serves
+            </span>
+            {/* Two lines before cutting off, so a longer list like "chicken chop, fries, nugget…" still shows */}
+            <span className="mt-1 text-[13px] font-bold text-on-surface leading-snug line-clamp-2 capitalize">
+              {match.serves}
+            </span>
           </div>
-        </div>
+        ) : null}
 
         <div className="rounded-xl p-2.5 bg-amber-tint border border-amber/40 text-on-surface flex items-start gap-2">
           <MaterialIcon name="lightbulb" className="text-[18px] text-amber shrink-0 mt-px" />
