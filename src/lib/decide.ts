@@ -5,6 +5,7 @@ import { googleMapsUrl } from "@/lib/mapsLinks";
 import { assessDiet, normalizeVenueDiet, type DietFields } from "@/lib/diet";
 import { UM_CAMPUS_CENTER, distanceMeters, formatDistance } from "@/lib/geo";
 import { venueArea } from "@/lib/area";
+import { chainKey } from "@/lib/chains";
 import {
   EMPTY_QUERY,
   compileQuery,
@@ -204,24 +205,6 @@ type Candidate = {
   hits: string[];
   exact: number;
 };
-
-// First words that don't identify a chain, so "Kafe Sains" and "Kafe Bahasa" stay separate places, and so do
-// "SS2 Rising Kopitiam" and "SS2 Durian Glasshause".
-const GENERIC_FIRST_WORDS = new Set([
-  "kafe", "cafe", "restoran", "restaurant", "kedai", "warung", "the", "nasi", "gerai", "medan", "food",
-  "ss2", "seksyen", "section", "pj",
-]);
-
-// Branches of one chain share a key: "KFC Jalan Universiti DT" and "KFC Gateway Mall" are both "kfc".
-function chainKey(name: string) {
-  const normalised = name
-    .toLowerCase()
-    .replace(/\(.*?\)/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-  const first = normalised.split(" ")[0];
-  return first && !GENERIC_FIRST_WORDS.has(first) ? first : normalised;
-}
 
 const nearness = (c: Candidate) => c.match.distanceMeters ?? UNKNOWN_DISTANCE_M;
 
