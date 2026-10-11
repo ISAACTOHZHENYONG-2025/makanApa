@@ -11,12 +11,15 @@ import FoodMatchCard from "./FoodMatchCard";
 import HomeHeader from "./HomeHeader";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import MoreMatchesList from "./MoreMatchesList";
+import SkeletonCard from "./SkeletonCard";
 import { fromRecommendation } from "./foodMatch";
 
 type Status = "loading" | "ready" | "error";
 
 type HomePageProps = {
   initialFilters: FilterDraft;
+  // The first results, worked out on the server with the page; absent if that failed
+  initialData?: DecideResponseData;
 };
 
 // Filter changes that need a refetch. A newly ticked diet tag doesn't: the feed hides non-matching cards itself.
@@ -32,61 +35,28 @@ function countChanges(applied: FilterDraft, fetched: FilterDraft) {
   return changes;
 }
 
-function SkeletonCard() {
-  return (
-    <div className="bg-surface rounded-2xl border border-hairline overflow-hidden animate-pulse">
-      <div className="h-36 bg-surface-container" />
-      <div className="p-3.5 flex flex-col gap-2.5">
-        <div className="h-4 w-2/3 rounded bg-surface-container" />
-        <div className="h-3 w-1/2 rounded bg-surface-container" />
-        <div className="h-12 rounded-xl bg-surface-container-low" />
-      </div>
-    </div>
-  );
-}
-
-export default function HomePage({ initialFilters }: HomePageProps) {
+export default function HomePage({ initialFilters, initialData }: HomePageProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   // Set when the header search bar opens the sheet, so the craving box gets the cursor
   const [focusCraving, setFocusCraving] = useState(false);
   const [applied, setApplied] = useState<FilterDraft>(initialFilters);
   const [draft, setDraft] = useState<FilterDraft>(initialFilters);
-  const [fetchedFor, setFetchedFor] = useState<FilterDraft | null>(null);
-  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
-  const [fetchedMoreMatches, setFetchedMoreMatches] = useState<VenueMatch[]>([]);
-  const [query, setQuery] = useState<DecideResponseData["query"] | null>(null);
+  const [fetchedFor, setFetchedFor] = useState<FilterDraft | null>(initialData ? initialFilters : null);
+  const [recommendations, setRecommendations] = useState<RecommendationItem[]>(initialData?.recommendations ?? []);
+  const [fetchedMoreMatches, setFetchedMoreMatches] = useState<VenueMatch[]>(initialData?.moreMatches ?? []);
+  const [query, setQuery] = useState<DecideResponseData["query"] | null>(initialData?.query ?? null);
   const [showMore, setShowMore] = useState(false);
-  const [status, setStatus] = useState<Status>("loading");
+  const [status, setStatus] = useState<Status>(initialData ? "ready" : "loading");
   const [error, setError] = useState("");
   // The AI is still reading the search text; the quick results are already showing
   const [refining, setRefining] = useState(false);
   const latestRequest = useRef(0);
 
-  const loadMatches = useCallback(async (filters: FilterDraft) => {
-    const requestId = ++latestRequest.current;
+  // The AI's reading of the craving (spelling fixes, synonyms, "chinese rice" as two things), when there is one and
+  // the quick results didn't already use it; on any failure the quick results stay
+  const refine = useCallback(async (requestId: number, filters: FilterDraft, quickEngine: DecideResponseData["engine"]) => {
     const payload = toDecidePayload(filters);
-    let quick: DecideResponseData;
-    try {
-      // Code's reading of the craving first, so the page never waits on the AI
-      quick = await decide({ ...payload, skipAi: true });
-      if (requestId !== latestRequest.current) return;
-      setRecommendations(quick.recommendations);
-      setFetchedMoreMatches(quick.moreMatches);
-      setQuery(quick.query);
-      setShowMore(false);
-      setFetchedFor(filters);
-      setRefining(false);
-      setStatus("ready");
-    } catch (err) {
-      if (requestId !== latestRequest.current) return;
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-      setStatus("error");
-      return;
-    }
-
-    // Then the AI's reading (spelling fixes, synonyms, "chinese rice" as two things) when there is a craving and it
-    // wasn't already cached; on any failure the quick results stay
-    if (!payload.craving || quick.engine === "ai") return;
+    if (!payload.craving || quickEngine === "ai") return;
     setRefining(true);
     try {
       const smart = await decide(payload);
@@ -102,11 +72,41 @@ export default function HomePage({ initialFilters }: HomePageProps) {
     }
   }, []);
 
+  const loadMatches = useCallback(
+    async (filters: FilterDraft) => {
+      const requestId = ++latestRequest.current;
+      let quick: DecideResponseData;
+      try {
+        // Code's reading of the craving first, so the page never waits on the AI
+        quick = await decide({ ...toDecidePayload(filters), skipAi: true });
+        if (requestId !== latestRequest.current) return;
+        setRecommendations(quick.recommendations);
+        setFetchedMoreMatches(quick.moreMatches);
+        setQuery(quick.query);
+        setShowMore(false);
+        setFetchedFor(filters);
+        setRefining(false);
+        setStatus("ready");
+      } catch (err) {
+        if (requestId !== latestRequest.current) return;
+        setError(err instanceof Error ? err.message : "Something went wrong.");
+        setStatus("error");
+        return;
+      }
+      await refine(requestId, filters, quick.engine);
+    },
+    [refine],
+  );
+
   useEffect(() => {
-    // Initial fetch on mount; state is only set after the request resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadMatches(initialFilters);
-  }, [loadMatches, initialFilters]);
+    // The server usually sent the quick results with the page; then only the AI's reading is left to fetch.
+    // Apart from the "Refining…" hint, state is only set after a request resolves.
+    if (initialData) {
+      void refine(++latestRequest.current, initialFilters, initialData.engine);
+    } else {
+      void loadMatches(initialFilters);
+    }
+  }, [initialData, initialFilters, loadMatches, refine]);
 
   const dietFilter = toDecidePayload(applied).dietaryRestrictions;
   // The budget the server used
