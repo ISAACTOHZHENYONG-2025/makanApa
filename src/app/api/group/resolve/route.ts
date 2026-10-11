@@ -5,8 +5,9 @@ import { requireGroupEnabled } from "@/lib/featureFlags";
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Venue } from "@/lib/types";
 import { mapsUrlForVenueName } from "@/lib/mapsLinks";
-import { assessDiet, mergeGroupRestrictions, normalizeVenueDiet } from "@/lib/diet";
-import { budgetComfort, fitsBudget, midpoint, venuePriceRange } from "@/lib/price";
+import { assessDiet, mergeGroupRestrictions } from "@/lib/diet";
+import { budgetComfort, fitsBudget, midpoint, venuePriceRange, type PriceRange } from "@/lib/price";
+import { FALLBACK_CAMPUS_VENUES, loadVenues } from "@/lib/decide";
 
 export interface Participant {
   memberName: string;
@@ -119,69 +120,15 @@ export async function POST(req: NextRequest) {
     // If any member picked Halal only, the whole group is halal-first. Otherwise the members' other filters add up.
     const mergedDietaryRestrictions = mergeGroupRestrictions(participants.map((p) => p.dietaryRestrictions));
 
-    // 4. Query Firestore venues
-    let candidateVenues: Venue[] = [];
-    try {
-      const venuesSnap = await getDocs(collection(db, "venues"));
-      venuesSnap.forEach((vDoc) => {
-        candidateVenues.push(normalizeVenueDiet({ id: vDoc.id, ...(vDoc.data() as Omit<Venue, "id">) }));
-      });
-    } catch (dbErr) {
-      console.warn("Could not fetch venues from Firestore, falling back:", dbErr);
-    }
+    // 4. Venues: the same cached list (and fallback) as /api/decide
+    const loaded = await loadVenues();
+    const candidateVenues = loaded.length > 0 ? loaded : FALLBACK_CAMPUS_VENUES;
 
-    if (candidateVenues.length === 0) {
-      candidateVenues = [
-        {
-          name: "KK12 Dining Hall (Raja Dr. Nazrin Shah)",
-          location: "12th Residential College, Universiti Malaya (Shuttle Bus Stop)",
-          priceMinMYR: 6,
-          priceMaxMYR: 10,
-          isHalal: "halal",
-          dietaryTags: ["Halal", "Budget-Friendly", "Nasi Campur"],
-          menuItems: [
-            { itemName: "Nasi Campur (Ayam Goreng + 2 Sayur)", priceMYR: 7.5 },
-            { itemName: "Nasi Lemak Ayam Berempah", priceMYR: 8.0 },
-            { itemName: "Teh O Ais", priceMYR: 2.0 },
-          ],
-        },
-        {
-          name: "Perdanasiswa Complex (KPS) Central Canteen",
-          location: "Kompleks Perdanasiswa (Central Hub)",
-          priceMinMYR: 7,
-          priceMaxMYR: 12,
-          isHalal: "halal",
-          dietaryTags: ["Halal", "Economy Rice", "Student Union"],
-          menuItems: [
-            { itemName: "Nasi Kandar Ayam Bawang + Bendi", priceMYR: 9.5 },
-            { itemName: "Soto Ayam Begedil", priceMYR: 7.0 },
-          ],
-        },
-        {
-          name: "Faculty of Science Food Court (FOS Bistro)",
-          location: "Faculty of Science, near Department of Chemistry",
-          priceMinMYR: 8,
-          priceMaxMYR: 14,
-          isHalal: "halal",
-          dietaryTags: ["Halal", "Western", "Noodles"],
-          menuItems: [
-            { itemName: "Claypot Yee Mee", priceMYR: 8.5 },
-            { itemName: "Mee Goreng Mamak", priceMYR: 6.5 },
-          ],
-        },
-      ];
-    }
-
-    // 5. Check Gemini API key
+    // 5. Diet, then budget
     // The same rule as /api/decide: a venue known to break the group's diet is out, and one nobody has checked
     // comes after every confirmed venue. Unchecked venues are only offered when fewer than 3 confirmed ones exist.
     const assessed = candidateVenues.map((v) => ({ v, diet: assessDiet(v, mergedDietaryRestrictions) })).filter((e) => e.diet.fits);
-    const confirmedVenues = assessed.filter((e) => e.diet.unconfirmed.length === 0).map((e) => e.v);
-    const unconfirmedVenues = assessed.filter((e) => e.diet.unconfirmed.length > 0).map((e) => e.v);
-    const dietVenues = confirmedVenues.length >= 3 ? confirmedVenues : [...confirmedVenues, ...unconfirmedVenues];
-    const confirmedSet = new Set(confirmedVenues);
-    const isConfirmed = (v: Venue) => confirmedSet.has(v);
-    if (dietVenues.length === 0) {
+    if (assessed.length === 0) {
       return NextResponse.json(
         {
           error: `No venue meets everyone's diet requirements (${mergedDietaryRestrictions.join(", ")}). Ask someone to relax a filter, or mark more venues in the venues sheet.`,
@@ -189,6 +136,28 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+    // A venue fits when its cheapest meal is within the lowest budget; one with no price can't be shown to fit.
+    const affordable = assessed.flatMap((e) => {
+      const price = venuePriceRange(e.v);
+      return price && fitsBudget(price, strictBudgetCap) ? [{ ...e, price }] : [];
+    });
+    if (affordable.length === 0) {
+      const cheapest = Math.min(...assessed.map((e) => venuePriceRange(e.v)?.min ?? Infinity));
+      return NextResponse.json(
+        {
+          error: `No venue that suits everyone's diet fits the lowest budget of RM${strictBudgetCap.toFixed(2)}${
+            Number.isFinite(cheapest) ? ` (the cheapest starts at RM${cheapest.toFixed(2)})` : ""
+          }. Ask whoever set the lowest budget to raise it.`,
+        },
+        { status: 404 }
+      );
+    }
+    const confirmed = affordable.filter((e) => e.diet.unconfirmed.length === 0);
+    const unconfirmed = affordable.filter((e) => e.diet.unconfirmed.length > 0);
+    const budgetVenues = confirmed.length >= 3 ? confirmed : [...confirmed, ...unconfirmed];
+    const confirmedSet = new Set(confirmed.map((e) => e.v));
+    const isConfirmed = (v: Venue) => confirmedSet.has(v);
+    const priceByName = new Map(budgetVenues.map((e) => [e.v.name.trim().toLowerCase(), e.price]));
 
     const apiKey =
       process.env.GEMINI_API_KEY ||
@@ -202,7 +171,7 @@ You are the Group Consensus Decision Engine for the Universiti Malaya (UM) Stude
 Multiple students with differing preferences and constraints have joined a group room to decide where to eat together.
 
 PARTICIPANTS LIST:
-${JSON.stringify(participants, null, 2)}
+${JSON.stringify(participants)}
 
 AGGREGATED GROUP BOTTLENECK CONSTRAINTS:
 - Strict Budget Cap: RM${strictBudgetCap.toFixed(2)} per person (constrained by the participant with the lowest budget)
@@ -216,8 +185,21 @@ AGGREGATED GROUP BOTTLENECK CONSTRAINTS:
         mergedDietaryRestrictions.length > 0 ? mergedDietaryRestrictions.join(", ") : "None"
       } (Must satisfy EVERY participant's requirement, e.g. Halal, Vegetarian)
 
-CANDIDATE VENUES (none is known to break the group's diet; "dietConfirmed" false means a diet requirement was never checked for that venue):
-${JSON.stringify(dietVenues.map((v) => ({ ...v, dietConfirmed: isConfirmed(v) })), null, 2)}
+CANDIDATE VENUES (all within the budget cap and none known to break the group's diet; "dietConfirmed" false means a diet requirement was never checked for that venue):
+${JSON.stringify(
+  // Only what the rules below use, so the prompt stays small.
+  budgetVenues.map(({ v, price }) => ({
+    name: v.name,
+    location: v.location,
+    priceMinMYR: price.min,
+    priceMaxMYR: price.max,
+    isHalal: v.isHalal ?? "unknown",
+    dietConfirmed: isConfirmed(v),
+    serves: v.serves,
+    allergyNotes: v.allergyNotes,
+    menuItems: v.menuItems?.map((m) => `${m.itemName} RM${m.priceMYR}`),
+  }))
+)}
 
 DECISION RULES:
 1. Select 1 "winningRecommendation" that satisfies the lowest budget, strictest time, transport limitation, and all dietary restrictions.
@@ -287,61 +269,60 @@ Provide your response adhering strictly to the structured schema.
       });
 
       const parsed = JSON.parse(response.text ?? "{}") as GroupResolveResponse;
-      return NextResponse.json(withMapsUrls(parsed, candidateVenues), { status: 200 });
+      // Never report a cost below the venue's cheapest meal.
+      const atLeastMin = <T extends { venueName: string; totalCostPerPersonMYR: number }>(pick: T): T => {
+        const price = priceByName.get(pick.venueName.trim().toLowerCase());
+        return price ? { ...pick, totalCostPerPersonMYR: Math.max(pick.totalCostPerPersonMYR, price.min) } : pick;
+      };
+      const checked: GroupResolveResponse = {
+        winningRecommendation: atLeastMin(parsed.winningRecommendation),
+        backupOptions: (parsed.backupOptions ?? []).map(atLeastMin),
+      };
+      return NextResponse.json(withMapsUrls(checked, candidateVenues), { status: 200 });
     }
 
-    // Heuristic Fallback Engine: venues whose price range overlaps the lowest budget, those fully within it
-    // first, then the lowest typical (midpoint) price.
-    const validCandidates = dietVenues
-      .flatMap((v) => {
-        const price = venuePriceRange(v);
-        return price && fitsBudget(price, strictBudgetCap) ? [{ v, price }] : [];
-      })
-      .sort(
-        (a, b) =>
-          Number(!isConfirmed(a.v)) - Number(!isConfirmed(b.v)) ||
-          budgetComfort(a.price, strictBudgetCap) - budgetComfort(b.price, strictBudgetCap) ||
-          midpoint(a.price) - midpoint(b.price),
-      )
-      .map(({ v }) => v);
-    // Typical cost per person: the venue's midpoint price, capped at the budget
-    const costFor = (v: Venue) => {
-      const price = venuePriceRange(v);
-      return price ? Math.min(midpoint(price), strictBudgetCap) : strictBudgetCap;
-    };
+    // Heuristic Fallback Engine: the venues within the lowest budget, confirmed diet first, those fully within it
+    // next, then the lowest typical (midpoint) price.
+    const ranked = [...budgetVenues].sort(
+      (a, b) =>
+        Number(!isConfirmed(a.v)) - Number(!isConfirmed(b.v)) ||
+        budgetComfort(a.price, strictBudgetCap) - budgetComfort(b.price, strictBudgetCap) ||
+        midpoint(a.price) - midpoint(b.price),
+    );
+    // Typical cost per person: the venue's midpoint price, capped at the budget. Every ranked venue's cheapest
+    // meal is within the budget, so this is never below it.
+    const costFor = (price: PriceRange) => Math.min(midpoint(price), strictBudgetCap);
+    const itemsFor = (v: Venue) =>
+      (v.menuItems || []).filter((m) => m.priceMYR <= strictBudgetCap).map((m) => m.itemName);
 
-    const winnerVenue = validCandidates[0] || dietVenues[0];
-    const suitableItems = (winnerVenue?.menuItems || [])
-      .filter((m) => m.priceMYR <= strictBudgetCap)
-      .map((m) => m.itemName);
-
+    const winner = ranked[0];
+    const suitableItems = itemsFor(winner.v);
     const winnerItems = suitableItems.length > 0 ? suitableItems : ["Daily Set Meal"];
-    const backupVenue = validCandidates[1] || dietVenues[1] || winnerVenue;
-    const backupItems = (backupVenue?.menuItems || [])
-      .filter((m) => m.priceMYR <= strictBudgetCap)
-      .map((m) => m.itemName);
+    const backup = ranked[1];
 
     const participantNames = participants.map((p) => p.memberName).join(", ");
 
     const fallbackResponse: GroupResolveResponse = {
       winningRecommendation: {
-        venueName: winnerVenue.name,
+        venueName: winner.v.name,
         recommendedItems: winnerItems.slice(0, 3),
-        totalCostPerPersonMYR: costFor(winnerVenue),
+        totalCostPerPersonMYR: costFor(winner.price),
         consensusReasoning: `Accommodates ${participants.length} students (${participantNames}) under lowest budget cap RM${strictBudgetCap.toFixed(
           2
         )}, matches ${transportBottleneck === "walk_or_public" ? "walking/campus shuttle limitation" : "vehicle access"}, and fulfills dietary preferences (${mergedDietaryRestrictions.join(", ") || "standard"}).${
-          isConfirmed(winnerVenue) ? "" : " Note: this venue's diet answers are not confirmed yet."
+          isConfirmed(winner.v) ? "" : " Note: this venue's diet answers are not confirmed yet."
         }`,
       },
-      backupOptions: [
-        {
-          venueName: backupVenue.name,
-          recommendedItems: backupItems.slice(0, 2),
-          totalCostPerPersonMYR: costFor(backupVenue),
-          consensusReasoning: `Strong alternative fitting within ${strictTimeLimit} mins and group budget.`,
-        },
-      ],
+      backupOptions: backup
+        ? [
+            {
+              venueName: backup.v.name,
+              recommendedItems: itemsFor(backup.v).slice(0, 2),
+              totalCostPerPersonMYR: costFor(backup.price),
+              consensusReasoning: `Strong alternative fitting within ${strictTimeLimit} mins and group budget.`,
+            },
+          ]
+        : [],
     };
 
     return NextResponse.json(withMapsUrls(fallbackResponse, candidateVenues), { status: 200 });
