@@ -2,6 +2,7 @@
 //   npm run db:import-nearby                    # write to Firestore
 //   npm run db:import-nearby -- --dry-run       # preview only, nothing is written
 //   npm run db:import-nearby -- --area=bangsar  # search another food area instead of the campus (see AREAS)
+//   npm run db:import-nearby -- --area=kl-gateway # a mall: text searches inside the building instead of a grid
 //   npm run db:import-nearby -- --extent=1500   # search radius around the area's centre in metres (default per area)
 //   npm run db:import-nearby -- --max-calls=50  # cap on Places API calls this run (default 95)
 //   npm run db:import-nearby -- --min-reviews=50 # skip places with fewer Google reviews (default per area)
@@ -32,7 +33,9 @@ const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY; // <- set this in .
 // Areas the grid can cover. Distances are always measured from the UM campus centre, whatever the area.
 // Centres are Google's own centre for each neighbourhood (Places Text Search). Off campus, only places with
 // at least minReviews Google reviews are imported, which drops dead listings, home bakers and unnamed stalls.
-const AREAS: Record<string, { label: string; center: LatLng; extent: number; minReviews: number }> = {
+// An area with queries is a mall: dozens of outlets share one spot, more than a nearby search's 20 results can
+// list, so it runs those Text Search queries (up to 60 results each) inside a box of ±extent around the centre.
+const AREAS: Record<string, { label: string; center: LatLng; extent: number; minReviews: number; queries?: string[] }> = {
   um: { label: "the campus centre", center: UM_CAMPUS_CENTER, extent: 1500, minReviews: 0 },
   bangsar: {
     label: "Bangsar Baru (Jalan Telawi)",
@@ -53,6 +56,14 @@ const AREAS: Record<string, { label: string; center: LatLng; extent: number; min
     extent: 700,
     minReviews: 50,
   },
+  // The box stops short of South Link and Nexus, ~200 m east and south.
+  "kl-gateway": {
+    label: "KL Gateway Mall",
+    center: { latitude: 3.1138, longitude: 101.6633 },
+    extent: 120,
+    minReviews: 20,
+    queries: ["restaurant", "cafe", "food", "noodles", "dessert", "bubble tea", "juice", "bakery", "fast food", "coffee"],
+  },
 };
 const DEFAULT_MAX_CALLS = 95;
 // Raw Google results and unsearched cells are saved here after every call, so a dry run can be followed
@@ -63,7 +74,7 @@ const MAX_RESULTS = 20;
 const FOOD_TYPES = ["restaurant", "cafe", "coffee_shop", "bakery", "fast_food_restaurant", "meal_takeaway", "food_court"];
 // Places can carry a food type while mainly being something else (event venues, hotels, charities).
 const FOOD_PRIMARY_TYPE =
-  /restaurant|cafe|cafeteria|coffee|bakery|food_court|meal_|diner|deli|tea_house|juice|dessert|ice_cream|donut|bagel|sandwich|snack|bistro|buffet/;
+  /restaurant|cafe|cafeteria|coffee|bakery|pastry|noodle|food_court|meal_|diner|deli|tea_house|juice|dessert|ice_cream|donut|bagel|sandwich|snack|bistro|buffet/;
 
 // Google gives a price level, not ringgit. Rough per-person MYR range for a student meal.
 const PRICE_LEVEL_MYR: Record<string, PriceRange> = {
@@ -82,6 +93,7 @@ const EXCLUDED_PLACE_IDS = new Set([
   "ChIJvYs81PBJzDERo2c1JXNRmvI", // OHMYKASEH
   "ChIJ_dKxmaJJzDERzSXG5HlWQrQ", // Drip Loft, Bangsar: vape shop listed as a cafe
   "ChIJzQLTGRZJzDERETsPm6PGRs0", // Vernakular Store, Bangsar: homeware shop; its coffee bar is Peep Coffee
+  "ChIJY0PfPmxJzDER34f-L386lF0", // Mizu Omakase, Jaya One: private dining, RM200+
 ]);
 const DUPLICATE_DISTANCE_M = 60;
 
@@ -286,6 +298,27 @@ async function searchNearby(center: LatLng, radius: number): Promise<GooglePlace
   return data.places ?? [];
 }
 
+// One page of a Text Search restricted to a box; pass the returned token to get the next page.
+async function searchText(query: string, center: LatLng, extent: number, pageToken?: string) {
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY!,
+      "X-Goog-FieldMask": `${FIELD_MASK},nextPageToken`,
+    },
+    body: JSON.stringify({
+      textQuery: query,
+      pageSize: MAX_RESULTS,
+      pageToken,
+      locationRestriction: { rectangle: { low: offset(center, -extent, -extent), high: offset(center, extent, extent) } },
+    }),
+  });
+  if (res.status === 429) throw new QuotaError();
+  if (!res.ok) throw new Error(`Places API ${res.status}: ${await res.text()}`);
+  return (await res.json()) as { places?: GooglePlace[]; nextPageToken?: string };
+}
+
 class QuotaError extends Error {}
 
 function numberArg(name: string, fallback: number) {
@@ -380,6 +413,30 @@ async function searchGrid({ label, center, extent, cacheFile }: SearchArea, maxC
   return found;
 }
 
+// Runs each query to its last page. Small enough to finish in one run, so it saves only at the end, for --use-cache.
+async function searchQueries({ label, center, extent, cacheFile }: SearchArea, queries: string[], maxCalls: number) {
+  console.log(`Running ${queries.length} text searches within ${extent} m of ${label} (max ${maxCalls} calls)...`);
+  const found = new Map<string, GooglePlace>();
+  let calls = 0;
+  for (const query of queries) {
+    let token: string | undefined;
+    do {
+      if (calls >= maxCalls) throw new Error(`Reached --max-calls=${maxCalls} before the searches finished.`);
+      const page = await searchText(query, center, extent, token);
+      calls++;
+      for (const place of page.places ?? []) found.set(place.id, place);
+      token = page.nextPageToken;
+    } while (token);
+  }
+  fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+  fs.writeFileSync(
+    cacheFile,
+    JSON.stringify({ extent, calls, places: [...found.values()], pending: [] } satisfies SearchCache),
+  );
+  console.log(`Google: ${calls} call(s), ${found.size} unique place(s).`);
+  return found;
+}
+
 function loadCache(file: string): Map<string, GooglePlace> {
   const cache = readCache(file);
   if (!cache) {
@@ -409,8 +466,8 @@ async function main() {
     console.error("Missing GOOGLE_MAPS_API_KEY. Add it to .env.local (see .env.local.example).");
     process.exit(1);
   }
-  if (!Number.isFinite(extent) || extent < 100 || extent > 10000) {
-    console.error("--extent must be between 100 and 10000 metres.");
+  if (!Number.isFinite(extent) || extent < 50 || extent > 10000) {
+    console.error("--extent must be between 50 and 10000 metres.");
     process.exit(1);
   }
   if (!Number.isInteger(maxCalls) || maxCalls < 1) {
@@ -424,7 +481,9 @@ async function main() {
 
   const found = process.argv.includes("--use-cache")
     ? loadCache(area.cacheFile)
-    : await searchGrid(area, maxCalls, process.argv.includes("--resume"));
+    : preset.queries
+      ? await searchQueries(area, preset.queries, maxCalls)
+      : await searchGrid(area, maxCalls, process.argv.includes("--resume"));
 
   const open = [...found.values()].map(toVenue).filter((v): v is ImportedVenue => v !== null);
   const venues = open

@@ -81,6 +81,8 @@ const CRAVING_ALIASES: Record<string, string[]> = {
   hotpot: ["hot pot", "steamboat", "malatang", "火锅", "火鍋"],
   "hot pot": ["hotpot", "steamboat", "火锅"],
   steamboat: ["hotpot", "hot pot", "火锅"],
+  malatang: ["mala tang", "麻辣烫", "麻辣燙"],
+  mala: ["malatang", "mala xiang guo", "麻辣"],
   porridge: ["congee", "bubur", "粥"],
   congee: ["porridge", "粥"],
   "roast duck": ["roasted duck", "烧鸭", "燒鴨"],

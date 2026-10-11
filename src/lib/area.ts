@@ -21,6 +21,9 @@ const ALIASES: Record<string, string> = {
   "happy mansion": "Section 17",
   "taman bahagia": "SS2",
   "pjs 11": "PJS 11",
+  "kl gateway": "Bangsar South",
+  "kl gateway mall": "Bangsar South",
+  kerinchi: "Bangsar South",
 };
 
 // Trailing segments of hand-typed addresses that name the city, not the neighbourhood.
