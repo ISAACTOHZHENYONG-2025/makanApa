@@ -39,7 +39,7 @@ export function priceLabel(match: VenueMatch) {
 
 export function fromRecommendation(rec: RecommendationItem, index: number, budget: number): FoodMatch {
   return {
-    id: `${index}-${rec.venueName}`,
+    id: rec.venueId ?? rec.venueName,
     venueId: rec.venueId,
     rank: index + 1,
     title: rec.venueName,

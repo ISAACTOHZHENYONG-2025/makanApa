@@ -12,17 +12,17 @@ export default function FoodMatchCard({ match, insightLabel }: FoodMatchCardProp
   const isTop = match.rank === 1;
 
   return (
-    <article className="bg-surface rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden flex flex-col">
+    <article className="bg-surface rounded-2xl shadow-level-1 border border-hairline overflow-hidden flex flex-col">
       <VenuePhoto foods={match.serves} name={match.title} preload={isTop} venueId={match.venueId}>
         {match.distanceShort ? (
-          <div className="absolute top-2.5 left-2.5 flex items-center gap-1 bg-white/95 backdrop-blur-sm px-2.5 py-1 rounded-full shadow-sm text-[11px] font-bold text-slate-800 tabular-nums">
+          <div className="absolute top-2.5 left-2.5 flex items-center gap-1 bg-surface/95 backdrop-blur-sm px-2.5 py-1 rounded-full shadow-level-1 text-xs font-bold text-on-surface tabular-nums">
             <MaterialIcon name="location_on" className="text-[14px] text-primary" />
             <span>{match.distanceShort}</span>
           </div>
         ) : null}
         <div
-          className={`absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-white text-[10px] font-extrabold tracking-wide shadow-sm ${
-            isTop ? "bg-emerald-500" : "bg-slate-700"
+          className={`absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-white text-[11px] font-extrabold tracking-wide shadow-level-1 ${
+            isTop ? "bg-primary-fill" : "bg-on-surface"
           }`}
         >
           #{match.rank} MATCH
@@ -37,17 +37,17 @@ export default function FoodMatchCard({ match, insightLabel }: FoodMatchCardProp
               <DietBadges isHalal={match.isHalal} isVegan={match.isVegan} isVegetarian={match.isVegetarian} />
             </div>
             {match.distanceLabel ? (
-              <p className="text-[11px] text-on-surface-variant flex items-center gap-1 mt-0.5 tabular-nums">
+              <p className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5 tabular-nums">
                 <MaterialIcon name="location_on" className="text-[13px] text-primary shrink-0" />
                 <span>{match.distanceLabel}</span>
               </p>
             ) : null}
           </div>
           <div className="text-right shrink-0">
-            <div className="text-[18px] font-black leading-none text-primary tabular-nums">{match.price}</div>
+            <div className="text-[18px] font-black leading-none text-primary-ink tabular-nums">{match.price}</div>
             <span
-              className={`text-[10px] font-semibold px-1 py-0.5 rounded inline-block mt-0.5 tabular-nums ${
-                match.priceWithinBudget ? "text-emerald-700 bg-emerald-50" : "text-[#B78103] bg-[#FFF8E1]"
+              className={`text-xs font-semibold px-1 py-0.5 rounded inline-block mt-0.5 tabular-nums ${
+                match.priceWithinBudget ? "bg-primary-tint text-primary-ink" : "bg-amber-tint text-amber-ink"
               }`}
             >
               {match.priceNote}
@@ -55,45 +55,47 @@ export default function FoodMatchCard({ match, insightLabel }: FoodMatchCardProp
           </div>
         </div>
 
-        <div className="bg-slate-50 border border-slate-100 rounded-xl p-2.5 flex items-center justify-between gap-2">
+        <div className="bg-surface-container border border-hairline rounded-xl p-2.5 flex items-center justify-between gap-2">
           <div className="min-w-0">
             {match.serves ? (
               <>
-                <span className="text-[9px] uppercase tracking-wider font-bold text-primary block leading-none">
+                <span className="text-[11px] uppercase tracking-wider font-bold text-primary-ink block leading-none">
                   Serves
                 </span>
                 <span className="text-[13px] font-bold text-on-surface truncate block capitalize">{match.serves}</span>
               </>
             ) : (
-              <span className="text-[11px] font-semibold text-slate-500">Typical meal price range shown</span>
+              <span className="text-xs font-semibold text-on-surface-variant">Typical meal price range shown</span>
             )}
           </div>
         </div>
 
-        <div className="rounded-xl p-2.5 bg-amber-50/80 border border-amber-200 text-amber-950 flex items-start gap-2">
-          <span className="text-base leading-none shrink-0 mt-0.5">💡</span>
-          <p className="text-[12px] leading-snug">
-            <strong className="text-amber-900 font-bold">{insightLabel}:</strong> {match.insight}
+        <div className="rounded-xl p-2.5 bg-amber-tint border border-amber/40 text-on-surface flex items-start gap-2">
+          <MaterialIcon name="lightbulb" className="text-[18px] text-amber shrink-0 mt-px" />
+          <p className="text-xs leading-snug">
+            <strong className="text-amber-ink font-bold">{insightLabel}:</strong> {match.insight}
           </p>
         </div>
 
         {match.allergyNotes ? (
-          <div className="rounded-xl p-2.5 bg-[#FBE9E7] border border-[#FF5722]/30 text-[#D84315] flex items-start gap-2">
+          <div className="rounded-xl p-2.5 bg-flame-tint border border-flame/30 text-flame-ink flex items-start gap-2">
             <MaterialIcon name="warning" className="text-[16px] shrink-0 mt-0.5" />
-            <p className="text-[12px] leading-snug">
+            <p className="text-xs leading-snug">
               <strong className="font-bold">Allergy note:</strong> {match.allergyNotes}
             </p>
           </div>
         ) : null}
 
         <a
-          className="h-12 px-3 rounded-full bg-primary hover:bg-primary-dark text-white text-[14px] font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-transform"
+          className="h-12 px-3 rounded-full bg-primary-fill hover:bg-primary-fill-hover text-white text-[14px] font-bold flex items-center justify-center gap-1.5 shadow-level-1 active:scale-95 transition-transform"
           href={match.mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
         >
           <MaterialIcon name="near_me" className="text-[17px]" />
           <span>Directions</span>
+          <MaterialIcon name="open_in_new" className="text-[14px]" />
+          <span className="sr-only"> (opens Google Maps)</span>
         </a>
       </div>
     </article>

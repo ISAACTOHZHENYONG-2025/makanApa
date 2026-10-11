@@ -1,53 +1,45 @@
 ---
 name: Campus Food Intelligence
 colors:
-  surface: '#f8f9ff'
-  surface-dim: '#d6dae3'
-  surface-bright: '#f8f9ff'
-  surface-container-lowest: '#ffffff'
-  surface-container-low: '#f0f4fc'
-  surface-container: '#eaeef7'
-  surface-container-high: '#e4e8f1'
-  surface-container-highest: '#dee3eb'
-  on-surface: '#171c22'
-  on-surface-variant: '#3f493f'
-  inverse-surface: '#2c3137'
-  inverse-on-surface: '#edf1f9'
-  outline: '#6f7a6e'
-  outline-variant: '#becabb'
-  surface-tint: '#006e2e'
+  background: '#f8f9fa'
   primary: '#00b14f'
+  primary-dark: '#009643'
+  primary-ink: '#007a33'
+  primary-fill: '#00873c'
+  primary-fill-hover: '#006f31'
+  primary-tint: '#e6f7ed'
+  amber: '#ffb800'
+  amber-ink: '#8a6100'
+  amber-tint: '#fff8e1'
+  flame: '#ff5722'
+  flame-ink: '#b33a12'
+  flame-tint: '#fbe9e7'
+  hairline: '#e9ecef'
+  hairline-strong: '#dee2e6'
+  muted: '#6c757d'
   on-primary: '#ffffff'
-  primary-container: '#00b14f'
-  on-primary-container: '#91ee9e'
-  inverse-primary: '#7eda8d'
-  secondary: '#ffb800'
-  on-secondary: '#ffffff'
+  secondary: '#7c5800'
   secondary-container: '#ffcd71'
-  on-secondary-container: '#785500'
-  tertiary: '#ff5722'
-  on-tertiary: '#ffffff'
-  tertiary-container: '#b12f00'
-  on-tertiary-container: '#ffcfc1'
-  error: '#ba1a1a'
-  on-error: '#ffffff'
+  surface: '#ffffff'
+  on-surface: '#1e2329'
+  on-surface-variant: '#495057'
+  surface-container-low: '#f0f4fc'
+  surface-container: '#f1f3f5'
+  surface-container-high: '#e4e8f1'
+  surface-container-lowest: '#ffffff'
+  primary-fixed: '#9af7a7'
+  secondary-fixed: '#ffdea7'
+  on-secondary-fixed: '#271900'
+  tertiary-fixed: '#ffdbd1'
+  on-tertiary-fixed: '#3b0900'
   error-container: '#ffdad6'
   on-error-container: '#93000a'
-  primary-fixed: '#9af7a7'
-  primary-fixed-dim: '#7eda8d'
+  surface-container-highest: '#dee3eb'
   on-primary-fixed: '#002109'
-  on-primary-fixed-variant: '#005321'
-  secondary-fixed: '#ffdea7'
-  secondary-fixed-dim: '#efbf65'
-  on-secondary-fixed: '#271900'
-  on-secondary-fixed-variant: '#5e4200'
-  tertiary-fixed: '#ffdbd1'
-  tertiary-fixed-dim: '#ffb5a0'
-  on-tertiary-fixed: '#3b0900'
-  on-tertiary-fixed-variant: '#862200'
-  background: '#f8f9ff'
-  on-background: '#171c22'
   surface-variant: '#dee3eb'
+  tertiary-container: '#b12f00'
+  error: '#ba1a1a'
+  on-error: '#ffffff'
 typography:
   display-hero:
     fontFamily: Inter
@@ -149,10 +141,21 @@ The stylistic framework blends **Modern Utilitarian Delivery Design** with **Cle
 
 The palette leverages an energetic, appetite-stimulating spectrum anchored by a recognizable delivery green and sunny nutritional accents:
 
-- **Primary (`#00B14F`)**: Delivery Emerald Green. Represents active orders, direct calls-to-action, available stalls, open dining halls, and positive capacity states.
+- **Primary (`#00B14F`)**: Delivery Emerald Green. Represents active orders, direct calls-to-action, available stalls, open dining halls, and positive capacity states. Used for borders, decorative icons, the slider, the logo and tints only; never for text, and never behind white text.
 - **Secondary (`#FFB800`)**: Warm Amber. Indicates high demand, ratings, peak crowding warnings, dietary highlight tags, and curated student recommendations.
 - **Tertiary (`#FF5722`)**: Warm Flame Red-Orange. Reserved for urgent campus dining notices, closing-soon alerts, sold-out statuses, and flash group orders.
 - **Neutral (`#1E2329`)**: Deep Obsidian Slate. Delivers crisp contrast across typographic hierarchies against high-key backgrounds, avoiding sterile pure blacks.
+
+### Text and Fill Tokens
+White or green text on `#00B14F` is about 2.8:1, below the 4.5:1 minimum for body text. So coloured text and white-text buttons use darker variants, and `#00B14F` itself stays for borders, icons and tints:
+
+- **Green text**: `primary-ink` (`#007A33`).
+- **White-text buttons and pills**: `primary-fill` (`#00873C`), hover and pressed `primary-fill-hover` (`#006F31`).
+- **Light green background**: `primary-tint` (`#E6F7ED`).
+- **Amber**: `amber` (`#FFB800`) for icons and borders; `amber-ink` (`#8A6100`) for text; `amber-tint` (`#FFF8E1`) for backgrounds.
+- **Flame**: `flame` (`#FF5722`) for icons and borders; `flame-ink` (`#B33A12`) for allergy and urgent text; `flame-tint` (`#FBE9E7`) for backgrounds.
+- **Borders**: `hairline` (`#E9ECEF`) for borders and dividers; `hairline-strong` (`#DEE2E6`) for input borders.
+- **Helper text**: `muted` (`#6C757D`), on white only. On grey, small text uses `on-surface-variant` (`#495057`).
 
 ### Surface Tones & Backgrounds
 - **Canvas Base**: `#F8F9FA` serves as the primary canvas, providing a crisp, glare-free background across all screen widths.
@@ -167,6 +170,7 @@ The typography uses Inter across all roles to ensure maximum readability, dense 
 - **Tabular Figures**: For pricing, wait-time countdowns, distance markers, and nutrition counts, always activate tabular lining numbers (`font-variant-numeric: tabular-nums`) to prevent jitter during real-time data refreshes.
 - **Tight Headings**: Large sizes leverage negative letter spacing to feel punchy and compact, reflecting on-the-go speed.
 - **Label Roles**: Micro-labels (`label-sm`, `label-md`) strictly utilize uppercase or semi-bold weights for badges (e.g., "HALAL", "10-15 MIN", "LOW CROWD").
+- **Minimum Sizes**: Nothing is smaller than `label-sm` (11px), and 11px is for uppercase badges and labels only. Body and helper text is at least `body-sm` (12px).
 
 ## Layout & Spacing
 
@@ -210,24 +214,24 @@ The interface embraces a friendly, ergonomic `16px` (`rounded-lg` / `1rem`) corn
 ### Hybrid Filtering Strategy (Client-Side Instant vs. Server-Side AI)
 To balance zero-latency UI feedback with optimal API token usage and cost efficiency:
 1. **Instant Client-Side Filtering**: Toggling static boolean flags (e.g., `Walk/Bus` vs. `Vehicle` or `Halal`) immediately hides non-matching cached cards locally via React client state without triggering backend API calls.
-2. **Explicit AI Execution Trigger**: Major filter updates (e.g., budget range shift or time availability changes) mark current AI insights as stale. Clicking the sticky action CTA invokes the `/api/decide` Next.js endpoint. Results from code's own reading of the search text show immediately; the AI's reading of the search text (areas, dishes, brands, spelling fixes) then refines them. The AI only interprets the search text; code does all filtering and ranking.
+2. **Explicit AI Execution Trigger**: "Show results" in the filter sheet runs the `/api/decide` Next.js endpoint straight away; ticking a diet tag still filters instantly on the client. Results from code's own reading of the search text show immediately; the AI's reading of the search text (areas, dishes, brands, spelling fixes) then refines them. The AI only interprets the search text; code does all filtering and ranking.
 
 ## Components
 
 ### Buttons
-- **Primary Action (Default / Active)**: Emerald background (`#00B14F`), white text (`#FFFFFF`), `14px` bold, pill shape (`9999px`), `48px` height on mobile for touch accessibility. Hover/active shifts to `#009643`.
-- **Primary Action (Stale / Filter Changed)**: Displays dynamic counter text (e.g., `"⚡ Update Results (2 Filters Changed)"`) accompanied by a subtle pulse micro-animation to prompt execution.
-- **Secondary / Outline**: Transparent background, `1.5px` border in `#00B14F`, text in `#00B14F`, pill shape.
+- **Primary Action (Default / Active)**: Emerald fill (`#00873C`, `primary-fill`), white text (`#FFFFFF`), `14px` bold, pill shape (`9999px`), `48px` height on mobile for touch accessibility. Hover/active shifts to `#006F31`.
+- **Primary Action (One-Tap Flow)**: There is no stale state. Once results are showing, the sticky bar reads "Refine search" and opens the filter sheet, where "Show results" runs the search.
+- **Secondary / Outline**: Transparent background, `1.5px` border in `#00B14F`, text in `primary-ink` (`#007A33`), pill shape.
 - **Ghost Action**: Transparent background with neutral text (`#1E2329`), subtle hover fill `#F1F3F5`.
 
 ### Floating Sticky Action Bar
 - **Positioning**: Fixed to viewport bottom, `16px` above bottom navigation dock, wrapped in Level 3 elevation.
 - **Dimensions**: Full-width minus `32px` mobile horizontal margins (`w-[calc(100%-2rem)]`), height `52px`.
-- **Layout**: Contains primary CTA label, left-aligned action icon (`⚡`), and right-aligned match count badge (`3 Options`).
+- **Layout**: Contains primary CTA label, left-aligned action icon (the Material `bolt` icon), and right-aligned match count badge (`3 Options`).
 
 ### Chips & Filter Pills
 - Inactive: Background `#FFFFFF`, border `1px solid #E9ECEF`, text `#1E2329`, pill-shaped, height `36px`.
-- Active: Background `#E6F7ED` (emerald tint), border `1.5px solid #00B14F`, text `#00B14F`, bold weight. Includes an optional trailing dismiss icon.
+- Active: Background `#E6F7ED` (emerald tint), border `1.5px solid #00B14F`, text `primary-ink` (`#007A33`), bold weight. Includes an optional trailing dismiss icon.
 
 ### Cards
 - Base Card: `16px` border-radius, pure white background, `1px solid #E9ECEF`, `16px` internal padding.
@@ -235,16 +239,18 @@ To balance zero-latency UI feedback with optimal API token usage and cost effici
 
 ### Segmented Controls
 - Container: Background `#F1F3F5`, pill shape, `4px` internal padding.
-- Item: Text `label-md`, color `#6C757D`. Active item has pure white `#FFFFFF` pill background with Level 1 elevation and `#1E2329` text.
+- Item: Text `label-md`, color `on-surface-variant` (`#495057`). Active item has pure white `#FFFFFF` pill background with Level 1 elevation and `#1E2329` text.
+- Used for the Halal choice: Halal only · Non-halal only · Any.
 
 ### Interactive Sliders (Wait Time & Distance Filters)
 - Track: Height `6px`, background `#E9ECEF`, filled progress segment in `#00B14F`.
 - Thumb: `24px` circular pure white `#FFFFFF` knob with a `2px solid #00B14F` rim and subtle drop shadow. Displays a dynamic floating tooltip showing values (e.g., "Max 15 min").
 
 ### Badges & Clean Tags
-- **Crowd Indicator Badge**: Green (`#E6F7ED` / `#00B14F`) for Low, Amber (`#FFF8E1` / `#B78103`) for Medium, Flame (`#FBE9E7` / `#D84315`) for High.
-- **Nutrition/Dietary Tags**: Neutral light gray backing (`#F1F3F5`), text `#495057`, `6px` radius, uppercase `label-sm`.
+- **Crowd Indicator Badge**: Green (`primary-tint` / `primary-ink`) for Low, Amber (`amber-tint` / `amber-ink`) for Medium, Flame (`flame-tint` / `flame-ink`) for High. Text always uses the -ink tokens.
+- **Nutrition/Dietary Tags**: Light green backing (`primary-tint`) with `primary-ink` text; tags nobody has confirmed use `amber-tint` with `amber-ink`. `6px` radius, uppercase `label-sm`.
 
 ### Form Inputs & Search Fields
 - Height `48px`, background `#FFFFFF`, border `1px solid #DEE2E6`, radius `12px`.
 - Focus state: Border shifts to `#00B14F` with a soft outer ring `0 0 0 3px rgba(0, 177, 79, 0.15)`. Search fields integrate a leading magnifying icon and trailing clear button.
+- The sticky header has a search bar that opens the filter sheet with the craving box focused.

@@ -12,8 +12,6 @@ type GroupEntryProps = {
 };
 
 const TIME_OPTIONS = [15, 30, 45, 60];
-// "Budget Meal" is a price preference, which the budget slider above already covers.
-const DIETARY_OPTIONS = DIET_TAGS.filter((tag) => tag.id !== "Budget Meal");
 
 const segmentClass = (active: boolean) =>
   `flex items-center justify-center gap-1.5 h-10 px-2 rounded-full text-xs transition-all ${
@@ -185,7 +183,7 @@ export default function GroupEntry({ onEnter }: GroupEntryProps) {
             <span className="text-[11px] text-[#6C757D]">Multi-select</span>
           </div>
           <div className="flex flex-wrap gap-2">
-            {DIETARY_OPTIONS.map(({ id, label }) => {
+            {DIET_TAGS.map(({ id, label }) => {
               const active = diet.includes(id);
               return (
                 <button
