@@ -97,9 +97,9 @@ export default function GroupEntry({ onEnter }: GroupEntryProps) {
             <span className="text-[11px] font-bold uppercase tracking-wider text-[#6C757D]">Room code</span>
             <input
               className={`${inputClass} mt-1.5 font-mono uppercase tracking-widest`}
-              maxLength={8}
+              maxLength={10}
               onChange={(event) => setCode(event.target.value)}
-              placeholder="UM-ABC"
+              placeholder="UM-ABCDE"
               value={code}
             />
           </label>

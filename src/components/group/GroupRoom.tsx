@@ -161,6 +161,7 @@ export default function GroupRoom() {
       setResult(await resolveRoom(roomCode));
       setResolvedFor(members.length);
     } catch (err) {
+      setResult(null);
       setResolveError(err instanceof Error ? err.message : "Could not resolve the group pick.");
     } finally {
       setResolving(false);
