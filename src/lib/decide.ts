@@ -138,7 +138,7 @@ const OFF_CAMPUS_DRIVING_HOTSPOTS: Venue[] = [
 ];
 
 // Used only when the Firestore venues collection can't be read or is empty.
-const FALLBACK_CAMPUS_VENUES: Venue[] = [
+export const FALLBACK_CAMPUS_VENUES: Venue[] = [
   {
     name: "KK12 Dining Hall (Raja Dr. Nazrin Shah)",
     location: "12th Residential College, Universiti Malaya",
@@ -430,7 +430,7 @@ function refreshVenues(): Promise<Venue[]> {
   return venueRefresh;
 }
 
-async function loadVenues(): Promise<Venue[]> {
+export async function loadVenues(): Promise<Venue[]> {
   if (!venueCache) return refreshVenues();
   if (Date.now() - venueCache.at >= VENUE_CACHE_MS) void refreshVenues();
   return venueCache.venues;
