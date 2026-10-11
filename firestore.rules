@@ -3,10 +3,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // Student Food Intelligence: Public read-only access for all students (no login required)
-    // Write access allowed for seeding/admin purposes during development
+    // Venues are written only by the db:* scripts through the Admin SDK, which bypasses these rules
     match /venues/{venueId} {
       allow read: if true;
-      allow write: if true; // In production, restrict write to admin or via secure Firebase Admin SDK
+      allow write: if false;
     }
 
     // Group decision rooms: anyone can open a room and join it, but nobody can edit or delete entries
