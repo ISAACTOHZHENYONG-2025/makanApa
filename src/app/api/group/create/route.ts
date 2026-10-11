@@ -1,13 +1,18 @@
+import { randomInt } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { requireGroupEnabled } from "@/lib/featureFlags";
+
+// 32^5 is about 33.5 million codes, so collisions are rare; the lookup below catches the rest.
+const CODE_LENGTH = 5;
+const MAX_CODE_ATTEMPTS = 5;
 
 function generateRoomCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let randomPart = "";
-  for (let i = 0; i < 3; i++) {
-    randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < CODE_LENGTH; i++) {
+    randomPart += chars.charAt(randomInt(chars.length));
   }
   return `UM-${randomPart}`;
 }
@@ -25,7 +30,22 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const hostName = (body.hostName || "Host").trim();
-    const roomCode = generateRoomCode();
+
+    // join, members and resolve all read the first room with a code, so a code must never be reused.
+    let roomCode: string | null = null;
+    for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS && !roomCode; attempt++) {
+      const candidate = generateRoomCode();
+      const existing = await getDocs(
+        query(collection(db, "group_rooms"), where("roomCode", "==", candidate), limit(1))
+      );
+      if (existing.empty) roomCode = candidate;
+    }
+    if (!roomCode) {
+      return NextResponse.json(
+        { error: "Couldn't find a free room code. Please try again." },
+        { status: 503 }
+      );
+    }
 
     const roomData = {
       roomCode,
