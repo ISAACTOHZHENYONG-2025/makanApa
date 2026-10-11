@@ -454,15 +454,15 @@ export async function decideMatches(body: Partial<DecideRequestPayload>): Promis
   const knownPlaceIds = new Set(venues.map((v) => v.placeId).filter(Boolean));
   venues = [...venues, ...OFF_CAMPUS_DRIVING_HOTSPOTS.filter((v) => !knownPlaceIds.has(v.placeId))];
 
-  // 2. Read the craving into areas and food groups: the AI's reading when it is cached or can be fetched,
-  // otherwise code's (commas split it; known area names and food aliases are recognised)
+  // 2. Read the craving into areas and food groups: code's reading (commas split it; known area names and food
+  // aliases are recognised), and the AI's when it is cached or can be fetched
   const vocab = buildVocabulary(venues);
-  let query = craving ? parseQueryLocally(craving, vocab.areas) : EMPTY_QUERY;
-  let engine: DecideResponseData["engine"] = "fallback";
+  const localQuery = craving ? parseQueryLocally(craving, vocab.areas) : EMPTY_QUERY;
+  let aiQuery: SearchQuery | undefined;
   if (craving) {
     const key = queryKey(craving);
     const apiKey = process.env.GROQ_API_KEY;
-    let aiQuery = cachedQuery(key);
+    aiQuery = cachedQuery(key);
     if (!aiQuery && apiKey && !body.skipAi && Date.now() >= aiPausedUntil) {
       try {
         aiQuery = await interpretQuery(apiKey, craving, key, vocab);
@@ -470,19 +470,15 @@ export async function decideMatches(body: Partial<DecideRequestPayload>): Promis
         console.warn("AI could not read the craving, using code's reading:", err);
       }
     }
-    if (aiQuery) {
-      query = aiQuery;
-      engine = "ai";
-    }
   }
-  // A named area means the student wants to go there, so the distance limit doesn't apply
-  const distanceLimitM = query.areas.length > 0 || maxDistanceKm === null ? null : maxDistanceKm * 1000;
 
   // 3. Drop venues that can't work: no price, cheapest meal over budget, known to break a ticked diet filter,
   // too far, outside a named area, or matching none of the food groups.
   // A venue nobody has checked for a ticked filter stays, marked unconfirmed, and is kept out of the top 3 below.
   // Venues with no coordinates are the hand-seeded on-campus ones, so the distance filter keeps them.
   const findCandidates = (q: SearchQuery): Candidate[] => {
+    // A named area means the student wants to go there, so the distance limit doesn't apply
+    const distanceLimitM = q.areas.length > 0 || maxDistanceKm === null ? null : maxDistanceKm * 1000;
     const matchGroups = compileQuery(q);
     return venues.flatMap((venue) => {
       const price = venuePriceRange(venue);
@@ -497,7 +493,23 @@ export async function decideMatches(body: Partial<DecideRequestPayload>): Promis
       return [{ venue, price, match, unconfirmed: diet.unconfirmed, hits, exact }];
     });
   };
-  let candidates = findCandidates(query);
+  let query = localQuery;
+  let engine: DecideResponseData["engine"] = "fallback";
+  let candidates = findCandidates(localQuery);
+  // The AI's reading wins (spelling fixes, synonyms) unless it would lose the search. The AI knows dishes and areas
+  // but not venue names, so for "tanaair" it reads nothing, which would show every venue; or it guesses a word
+  // that matches nothing while code's reading found the venue by name.
+  if (aiQuery) {
+    const isEmpty = (q: SearchQuery) => q.areas.length === 0 && q.groups.length === 0;
+    if (!isEmpty(aiQuery) || isEmpty(localQuery)) {
+      const aiCandidates = findCandidates(aiQuery);
+      if (aiCandidates.length > 0 || candidates.length === 0) {
+        query = aiQuery;
+        engine = "ai";
+        candidates = aiCandidates;
+      }
+    }
+  }
   // Code's reading keeps "chinese rice" as one phrase; when that finds nothing, try its words separately
   const split = candidates.length === 0 && engine === "fallback" ? splitPhrases(query) : undefined;
   if (split) {

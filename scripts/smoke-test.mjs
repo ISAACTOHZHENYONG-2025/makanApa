@@ -69,6 +69,8 @@ const decideCases = [
   { label: "area only, halal", craving: "ss2", maxBudget: 30, maxDistanceKm: 1, dietaryRestrictions: ["Halal"], skipAi: true, expectAreas: ["SS2"] },
   { label: "brand", craving: "zus", maxBudget: 30, maxDistanceKm: null, dietaryRestrictions: [], expectName: /zus/i },
   { label: "misspelt dish, AI", craving: "bakuteh", maxBudget: 40, maxDistanceKm: null, dietaryRestrictions: [], expectName: /bak kut teh|bah kut teh|肉骨茶/i },
+  // A venue name the AI doesn't know: its reading must not replace code's, which finds the venue by name
+  { label: "venue name the AI doesn't know", craving: "tanaair", maxBudget: 30, maxDistanceKm: null, dietaryRestrictions: [], expectName: /tanaair/i },
   // Filler words drop out of code's reading ("thai food" is "thai"); a known dish stays one phrase.
   { label: "filler words, code", craving: "vietnam cuisine", maxBudget: 30, maxDistanceKm: null, dietaryRestrictions: [], skipAi: true, expectLabels: ["vietnam"] },
   { label: "known dish, code", craving: "wantan mee", maxBudget: 30, maxDistanceKm: null, dietaryRestrictions: [], skipAi: true, expectLabels: ["wantan mee"] },
