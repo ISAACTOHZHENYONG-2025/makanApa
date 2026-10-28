@@ -1,4 +1,4 @@
-import type { VenueMatch } from "@/app/api/decide/route";
+import type { VenueMatch } from "@/lib/decide/types";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import DietBadges, { UnconfirmedBadges } from "./DietBadges";
 import { distanceLabel, priceLabel } from "./foodMatch";

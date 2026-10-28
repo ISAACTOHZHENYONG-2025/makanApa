@@ -2,72 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { Venue } from "@/lib/types";
-import { googleMapsUrl } from "@/lib/mapsLinks";
-import { assessDiet, normalizeVenueDiet, type DietFields } from "@/lib/diet";
-import { UM_CAMPUS_CENTER, distanceMeters, formatDistance } from "@/lib/geo";
+import { normalizeVenueDiet } from "@/lib/diet";
 import { venueArea } from "@/lib/area";
-import {
-  EMPTY_QUERY,
-  compileQuery,
-  fold,
-  parseQueryLocally,
-  sanitiseQuery,
-  splitPhrases,
-  venueSearchText,
-  type SearchQuery,
-} from "@/lib/search";
-import { budgetComfort, fitsBudget, formatPriceRange, midpoint, venuePriceRange, type PriceRange } from "@/lib/price";
-
-export interface DecideRequestPayload {
-  // Free text, one or several things: "noodles", "zus", "sec17, chinese, rice". Empty means anything.
-  craving?: string;
-  maxBudget: number;
-  // Straight-line distance from the UM campus centre; null means any distance.
-  maxDistanceKm?: number | null;
-  dietaryRestrictions: string[];
-  // True reads the craving without the AI (unless its reading is cached), so the page can show results straight away.
-  skipAi?: boolean;
-}
-
-// A venue that fits the student's budget, diet and distance.
-export interface VenueMatch {
-  // Firestore doc id (the Google Place ID); names the venue's photo file. Absent for the built-in fallback venues.
-  venueId?: string;
-  venueName: string;
-  // Usual meal price range; equal when the venue has a single price.
-  priceMinMYR: number;
-  priceMaxMYR: number;
-  // True when even the dearest usual meal is within budget; false when only the cheaper ones are.
-  withinBudget: boolean;
-  isHalal: boolean;
-  isVegetarian: boolean;
-  isVegan: boolean;
-  // The sheet's raw answers (blank = unchecked), so the feed can apply a newly ticked diet filter without a refetch
-  diet: DietFields;
-  // Shown on the card as a warning; not a filter
-  allergyNotes?: string;
-  serves: string[];
-  rating?: number;
-  // Straight-line distance from the UM campus centre; absent when the venue has no coordinates.
-  distanceMeters?: number;
-  // Short neighbourhood name from the address, e.g. "SS2" or "UM"; absent when the address doesn't say.
-  area?: string;
-  // Google Maps directions link; Maps works out the route from the user's location.
-  mapsUrl: string;
-}
-
-export interface RecommendationItem extends VenueMatch {
-  reasoning: string;
-}
-
-export interface DecideResponseData {
-  recommendations: RecommendationItem[];
-  moreMatches: VenueMatch[];
-  // "ai" when the AI read the craving into the query; "fallback" when code did
-  engine: "ai" | "fallback";
-  // How the craving was read, for showing back to the student
-  query: SearchQuery;
-}
+import { EMPTY_QUERY, fold, parseQueryLocally, sanitiseQuery, splitPhrases, type SearchQuery } from "@/lib/search";
+import { findCandidates, pickMatches } from "@/lib/decide/pick";
+import type { DecideRequestPayload, DecideResponseData } from "@/lib/decide/types";
 
 // Off-campus spots, included whenever they are within the chosen distance. Coordinates are from Google Places.
 const OFF_CAMPUS_DRIVING_HOTSPOTS: Venue[] = [
@@ -164,11 +103,7 @@ const FALLBACK_CAMPUS_VENUES: Venue[] = [
   },
 ];
 
-// Distance assumed for hand-seeded venues that have no coordinates yet (they are on campus).
-const UNKNOWN_DISTANCE_M = 800;
 const DEFAULT_MAX_DISTANCE_KM = 3;
-// Ranking treats venues within the same 300 m band as equally near.
-const DISTANCE_BAND_M = 300;
 const VENUE_CACHE_MS = 60_000;
 // Room for several things at once, e.g. "sec17, chinese, rice"
 const MAX_CRAVING_CHARS = 100;
@@ -194,120 +129,6 @@ function reasoningOptions(model: string) {
   return {};
 }
 
-// unconfirmed: ticked diet filters nobody has checked this venue for, e.g. "Halal unconfirmed"; empty when all are confirmed
-// hits: labels of the craving's food groups the venue matches; exact: how many of those it matches by the label itself
-type Candidate = {
-  venue: Venue;
-  match: VenueMatch;
-  price: PriceRange;
-  unconfirmed: string[];
-  hits: string[];
-  exact: number;
-};
-
-// First words that don't identify a chain, so "Kafe Sains" and "Kafe Bahasa" stay separate places, and so do
-// "SS2 Rising Kopitiam" and "SS2 Durian Glasshause".
-const GENERIC_FIRST_WORDS = new Set([
-  "kafe", "cafe", "restoran", "restaurant", "kedai", "warung", "the", "nasi", "gerai", "medan", "food",
-  "ss2", "seksyen", "section", "pj",
-]);
-
-// Branches of one chain share a key: "KFC Jalan Universiti DT" and "KFC Gateway Mall" are both "kfc".
-function chainKey(name: string) {
-  const normalised = name
-    .toLowerCase()
-    .replace(/\(.*?\)/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-  const first = normalised.split(" ")[0];
-  return first && !GENERIC_FIRST_WORDS.has(first) ? first : normalised;
-}
-
-const nearness = (c: Candidate) => c.match.distanceMeters ?? UNKNOWN_DISTANCE_M;
-
-// Top 3 holds at most one branch per chain: the nearest of that chain's branches that match the search as well as
-// its best one, so a nearer branch never brings in a weaker match. Every other candidate, other branches included,
-// keeps its order in moreMatches.
-function pickTopThree(ranked: Candidate[]): { top: Candidate[]; rest: Candidate[] } {
-  const top: Candidate[] = [];
-  const used = new Set<Candidate>();
-  const seenChains = new Set<string>();
-  for (const entry of ranked) {
-    if (top.length >= 3) break;
-    const key = chainKey(entry.venue.name);
-    if (seenChains.has(key)) continue;
-    seenChains.add(key);
-    const nearest = ranked
-      .filter(
-        (c) =>
-          !used.has(c) &&
-          chainKey(c.venue.name) === key &&
-          c.hits.length === entry.hits.length &&
-          c.exact === entry.exact,
-      )
-      .reduce((a, b) => (nearness(b) < nearness(a) ? b : a));
-    used.add(nearest);
-    top.push(nearest);
-  }
-  return { top, rest: ranked.filter((c) => !used.has(c)) };
-}
-
-function toVenueMatch(venue: Venue, price: PriceRange, budget: number): VenueMatch {
-  const hasCoords = typeof venue.latitude === "number" && typeof venue.longitude === "number";
-  const meters = hasCoords
-    ? Math.round(distanceMeters(UM_CAMPUS_CENTER, { latitude: venue.latitude!, longitude: venue.longitude! }))
-    : undefined;
-
-  return {
-    venueId: venue.id ?? venue.placeId,
-    venueName: venue.name,
-    priceMinMYR: price.min,
-    priceMaxMYR: price.max,
-    withinBudget: budgetComfort(price, budget) === 0,
-    isHalal: venue.isHalal === "halal", // only a confirmed halal venue carries the badge
-    isVegetarian: venue.vegetarian === "yes" || venue.vegan === "yes",
-    isVegan: venue.vegan === "yes",
-    diet: {
-      isHalal: venue.isHalal,
-      vegetarian: venue.vegetarian,
-      vegan: venue.vegan,
-      noSeafoodOption: venue.noSeafoodOption,
-      nonHalal: venue.nonHalal,
-      noBeefOption: venue.noBeefOption,
-    },
-    allergyNotes: venue.allergyNotes,
-    serves: venue.serves ?? [],
-    rating: venue.rating,
-    distanceMeters: meters,
-    area: venueArea(venue.location),
-    mapsUrl: googleMapsUrl(venue),
-  };
-}
-
-// Code-only ranking: nearest first (in 300 m bands), then venues whose whole price range is within budget
-// before those where only the cheaper meals are, then best rated, then the lowest typical (midpoint) price.
-function rankByDistanceAndRating(a: Candidate, b: Candidate) {
-  const band = (c: Candidate) => Math.round(nearness(c) / DISTANCE_BAND_M);
-  return (
-    band(a) - band(b) ||
-    Number(b.match.withinBudget) - Number(a.match.withinBudget) ||
-    (b.match.rating ?? 0) - (a.match.rating ?? 0) ||
-    midpoint(a.price) - midpoint(b.price)
-  );
-}
-
-
-// The card's "Why this pick": what it matched, then distance, price, halal and rating.
-// e.g. "Matches chinese, rice in Section 17: 3.4 km from campus centre, RM8-12, all within budget, halal."
-function reasonFor(c: Candidate, query: SearchQuery) {
-  const parts = [c.match.withinBudget ? `RM${formatPriceRange(c.price)}, all within budget` : `RM${formatPriceRange(c.price)}, cheaper meals within budget`];
-  if (c.match.distanceMeters !== undefined) parts.unshift(`${formatDistance(c.match.distanceMeters)} from campus centre`);
-  if (c.match.isHalal) parts.push("halal");
-  if (c.match.rating) parts.push(`rated ${c.match.rating.toFixed(1)}`);
-  const inArea = query.areas.length > 0 && c.match.area ? ` in ${c.match.area}` : "";
-  const lead = c.hits.length > 0 ? `Matches ${c.hits.join(", ")}${inArea}: ` : inArea ? `In ${c.match.area}: ` : "";
-  return `${lead}${parts.join(", ")}.`;
-}
 
 // The words the AI should translate the craving into: every area and the most common serves values. Cuisines are
 // left out: the model knows them, and every token counts against Groq's per-minute limit.
@@ -464,47 +285,19 @@ export async function POST(req: NextRequest) {
     // A named area means the student wants to go there, so the distance limit doesn't apply
     const distanceLimitM = query.areas.length > 0 || maxDistanceKm === null ? null : maxDistanceKm * 1000;
 
-    // 3. Drop venues that can't work: no price, cheapest meal over budget, known to break a ticked diet filter,
-    // too far, outside a named area, or matching none of the food groups.
-    // A venue nobody has checked for a ticked filter stays, marked unconfirmed, and is kept out of the top 3 below.
-    // Venues with no coordinates are the hand-seeded on-campus ones, so the distance filter keeps them.
-    const findCandidates = (q: SearchQuery): Candidate[] => {
-      const matchGroups = compileQuery(q);
-      return venues.flatMap((venue) => {
-        const price = venuePriceRange(venue);
-        if (!price || !fitsBudget(price, maxBudget)) return [];
-        const diet = assessDiet(venue, dietaryRestrictions);
-        if (!diet.fits) return [];
-        const match = toVenueMatch(venue, price, maxBudget);
-        if (distanceLimitM !== null && match.distanceMeters !== undefined && match.distanceMeters > distanceLimitM) return [];
-        if (q.areas.length > 0 && !(match.area && q.areas.includes(match.area))) return [];
-        const { hits, exact } = matchGroups(venueSearchText(venue));
-        if (q.groups.length > 0 && hits.length === 0) return [];
-        return [{ venue, price, match, unconfirmed: diet.unconfirmed, hits, exact }];
-      });
-    };
-    let candidates = findCandidates(query);
+    // 3. Drop venues that can't work, then rank the rest and pick the top 3 (see lib/decide/pick.ts)
+    const params = { maxBudget, dietaryRestrictions, distanceLimitM };
+    let candidates = findCandidates(venues, query, params);
     // Code's reading keeps "chinese rice" as one phrase; when that finds nothing, try its words separately
     const split = candidates.length === 0 && engine === "fallback" ? splitPhrases(query) : undefined;
     if (split) {
       query = split;
-      candidates = findCandidates(split);
+      candidates = findCandidates(venues, split, params);
     }
 
-    // 4. Venues matching more of the food groups first ("chinese" and "rice" before just "rice"), then more of them
-    // by the label itself ("nasi lemak" before a looser "rice"), then nearest, within budget, best rated, cheapest
-    const ranked = candidates.sort(
-      (a, b) => b.hits.length - a.hits.length || b.exact - a.exact || rankByDistanceAndRating(a, b),
-    );
-
-    // Confirmed venues keep their order and come first; unconfirmed ones follow, only ever in moreMatches.
-    const confirmed = ranked.filter((c) => c.unconfirmed.length === 0);
-    const unconfirmed = ranked.filter((c) => c.unconfirmed.length > 0);
-    const { top, rest } = pickTopThree(confirmed);
     return NextResponse.json<DecideResponseData>(
       {
-        recommendations: top.map((c) => ({ ...c.match, reasoning: reasonFor(c, query) })),
-        moreMatches: [...rest, ...unconfirmed].map((c) => c.match),
+        ...pickMatches(candidates, query),
         engine,
         query,
       },
