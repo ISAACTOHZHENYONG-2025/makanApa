@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "db:cli": "npx tsx scripts/venues/venue-cli.ts",
+    "db:seed-extra": "npx tsx scripts/venues/seed-extra-venues.ts",
     "db:import-nearby": "npx tsx scripts/venues/import-nearby-venues.ts",
     "db:export-sheet": "npx tsx scripts/venues/export-venues-sheet.ts",
     "db:import-sheet": "npx tsx scripts/venues/import-venues-sheet.ts",
