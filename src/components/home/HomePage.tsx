@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DecideResponseData, RecommendationItem, VenueMatch } from "@/app/api/decide/route";
+import type { DecideResponseData, RecommendationItem, VenueMatch } from "@/lib/decide/types";
 import BottomNav from "@/components/layout/BottomNav";
 import { decide, toDecidePayload } from "@/lib/apiClient";
 import { assessDiet } from "@/lib/diet";

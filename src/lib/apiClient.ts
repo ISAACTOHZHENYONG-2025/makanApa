@@ -1,4 +1,4 @@
-import type { DecideRequestPayload, DecideResponseData } from "@/app/api/decide/route";
+import type { DecideRequestPayload, DecideResponseData } from "@/lib/decide/types";
 import type { RoomInfo } from "@/app/api/group/members/route";
 import type { JoinMemberPayload } from "@/app/api/group/join/route";
 import type { GroupResolveResponse } from "@/app/api/group/resolve/route";

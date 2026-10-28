@@ -1,4 +1,4 @@
-import type { RecommendationItem, VenueMatch } from "@/app/api/decide/route";
+import type { RecommendationItem, VenueMatch } from "@/lib/decide/types";
 import { formatDistance } from "@/lib/geo";
 import { formatPriceRange } from "@/lib/price";
 
