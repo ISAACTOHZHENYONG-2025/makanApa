@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { decideMatches, type DecideRequestPayload, type DecideResponseData } from "@/lib/decide";
 
 // The matching itself lives in src/lib/decide.ts, so the home page can run it on the server too.
-export type { DecideRequestPayload, DecideResponseData, RecommendationItem, VenueMatch } from "@/lib/decide";
+export type { DecideRequestPayload, DecideResponseData, TopPick, VenueMatch } from "@/lib/decide";
 
 export async function POST(req: NextRequest) {
   try {

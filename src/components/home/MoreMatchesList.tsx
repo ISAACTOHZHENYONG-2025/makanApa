@@ -1,11 +1,11 @@
-import type { VenueMatch } from "@/app/api/decide/route";
+import { priceLabel, type SeeMoreItem } from "@/lib/feed";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import DietBadges, { UnconfirmedBadges } from "./DietBadges";
-import { distanceLabel, priceLabel } from "./foodMatch";
+import { distanceLabel } from "./foodMatch";
 
 type MoreMatchesListProps = {
   // unconfirmed: ticked diet filters nobody has checked for the venue, shown as labels
-  items: { match: VenueMatch; unconfirmed: string[] }[];
+  items: SeeMoreItem[];
 };
 
 export default function MoreMatchesList({ items }: MoreMatchesListProps) {

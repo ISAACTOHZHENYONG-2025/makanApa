@@ -1,20 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DecideResponseData, RecommendationItem, VenueMatch } from "@/app/api/decide/route";
+import type { DecideResponseData, VenueMatch } from "@/app/api/decide/route";
 import BottomNav from "@/components/layout/BottomNav";
 import { decide, toDecidePayload } from "@/lib/apiClient";
-import { chainKey } from "@/lib/chains";
-import { assessDiet } from "@/lib/diet";
 import { filtersToSearchParams, type FilterDraft } from "@/lib/filters";
-import { formatDistance } from "@/lib/geo";
+import { arrangeFeed } from "@/lib/feed";
+import { EMPTY_QUERY } from "@/lib/search";
 import FilterBottomSheet from "./FilterBottomSheet";
 import FoodMatchCard from "./FoodMatchCard";
 import HomeHeader from "./HomeHeader";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import MoreMatchesList from "./MoreMatchesList";
 import SkeletonCard from "./SkeletonCard";
-import { fromRecommendation, priceLabel } from "./foodMatch";
+import { fromTopPick } from "./foodMatch";
 
 type Status = "loading" | "ready" | "error";
 
@@ -46,16 +45,6 @@ function friendlyError(err: unknown) {
   return "Something went wrong on our side. Try again in a moment.";
 }
 
-// "Why this pick" for a venue moved up from See more, which the server sent without one: its wording, less what
-// the venue matched in the search, e.g. "3.4 km from campus centre, RM8-12, all within budget, halal."
-function promotedReason(match: VenueMatch) {
-  const parts = [`${priceLabel(match)}, ${match.withinBudget ? "all" : "cheaper meals"} within budget`];
-  if (match.distanceMeters !== undefined) parts.unshift(`${formatDistance(match.distanceMeters)} from campus centre`);
-  if (match.isHalal) parts.push("halal");
-  if (match.rating) parts.push(`rated ${match.rating.toFixed(1)}`);
-  return `${parts.join(", ")}.`;
-}
-
 export default function HomePage({ initialFilters, initialData }: HomePageProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   // Set when the header search bar opens the sheet, so the craving box gets the cursor
@@ -63,8 +52,8 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
   const [applied, setApplied] = useState<FilterDraft>(initialFilters);
   const [draft, setDraft] = useState<FilterDraft>(initialFilters);
   const [fetchedFor, setFetchedFor] = useState<FilterDraft | null>(initialData ? initialFilters : null);
-  const [recommendations, setRecommendations] = useState<RecommendationItem[]>(initialData?.recommendations ?? []);
-  const [fetchedMoreMatches, setFetchedMoreMatches] = useState<VenueMatch[]>(initialData?.moreMatches ?? []);
+  // Every venue the last search found; arrangeFeed below turns them into top picks and See more
+  const [fetchedMatches, setFetchedMatches] = useState<VenueMatch[]>(initialData?.matches ?? []);
   const [query, setQuery] = useState<DecideResponseData["query"] | null>(initialData?.query ?? null);
   const [showMore, setShowMore] = useState(false);
   const [status, setStatus] = useState<Status>(initialData ? "ready" : "loading");
@@ -81,8 +70,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
     try {
       const smart = await decide(toDecidePayload(filters));
       if (requestId !== latestRequest.current || smart.engine !== "ai") return;
-      setRecommendations(smart.recommendations);
-      setFetchedMoreMatches(smart.moreMatches);
+      setFetchedMatches(smart.matches);
       setQuery(smart.query);
     } catch {
       // Keep the quick results
@@ -100,8 +88,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
         // Code's reading of the craving first, so the page never waits on the AI
         quick = await decide({ ...toDecidePayload(filters), skipAi: true });
         if (requestId !== latestRequest.current) return;
-        setRecommendations(quick.recommendations);
-        setFetchedMoreMatches(quick.moreMatches);
+        setFetchedMatches(quick.matches);
         setQuery(quick.query);
         setShowMore(false);
         setFetchedFor(filters);
@@ -129,36 +116,13 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
     }
   }, [initialData, initialFilters, loadMatches, refine]);
 
-  const dietFilter = toDecidePayload(applied).dietaryRestrictions;
   // The budget the server used
   const fetchedBudget = fetchedFor ? toDecidePayload(fetchedFor).maxBudget : 0;
-  // Venues known to break a ticked filter are hidden. Venues nobody has checked for one stay, but only under
-  // See more with a label, after the confirmed ones. Only confirmed venues become top matches.
-  const assess = <T extends VenueMatch>(items: T[]) =>
-    items.map((item) => ({ item, ...assessDiet(item.diet, dietFilter) })).filter((entry) => entry.fits);
-  const assessedTop = assess(recommendations);
-  const assessedMore = assess(fetchedMoreMatches);
-  const confirmedTop = assessedTop.filter((entry) => entry.unconfirmed.length === 0);
-  const confirmedMore = assessedMore.filter((entry) => entry.unconfirmed.length === 0);
-  // Top picks a newly ticked tag hid are filled from See more's confirmed venues, in the server's order and, like
-  // the server's top 3, one branch per chain
-  const topChains = new Set(confirmedTop.map((entry) => chainKey(entry.item.venueName)));
-  const promoted = new Set<VenueMatch>();
-  for (const { item } of confirmedMore) {
-    if (confirmedTop.length + promoted.size >= 3) break;
-    const key = chainKey(item.venueName);
-    if (topChains.has(key)) continue;
-    topChains.add(key);
-    promoted.add(item);
-  }
-  const matches = [
-    ...confirmedTop.map((entry) => entry.item),
-    ...[...promoted].map((item) => ({ ...item, reasoning: promotedReason(item) })),
-  ].map((item, index) => fromRecommendation(item, index, fetchedBudget));
-  const moreMatches = [
-    ...confirmedMore.filter((entry) => !promoted.has(entry.item)),
-    ...[...assessedTop, ...assessedMore].filter((entry) => entry.unconfirmed.length > 0),
-  ].map(({ item, unconfirmed }) => ({ match: item as VenueMatch, unconfirmed }));
+  // A newly ticked diet tag needs no new search: arranging the same matches again hides what it rules out, and
+  // fills the top picks from See more. Before the AI's reading arrives, query is code's reading.
+  const feed = arrangeFeed(fetchedMatches, toDecidePayload(applied).dietaryRestrictions, query ?? EMPTY_QUERY);
+  const topPicks = feed.topPicks.map((pick, index) => fromTopPick(pick, index, fetchedBudget));
+  const seeMore = feed.seeMore;
 
   const openSheet = (focus: boolean) => {
     setDraft(applied);
@@ -183,8 +147,8 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
     if (!fetchedFor || countChanges(next, fetchedFor) > 0) search(next);
   };
 
-  const topCount = matches.length;
-  const moreCount = moreMatches.length;
+  const topCount = topPicks.length;
+  const moreCount = seeMore.length;
   const countLabel = `${topCount} top pick${topCount === 1 ? "" : "s"}${moreCount > 0 ? ` · ${moreCount} more` : ""}`;
   const announcement =
     status === "loading"
@@ -248,7 +212,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
             </div>
           ) : null}
 
-          {status === "loading" && matches.length === 0 ? (
+          {status === "loading" && topPicks.length === 0 ? (
             <>
               <SkeletonCard />
               <SkeletonCard />
@@ -269,7 +233,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
             </div>
           ) : null}
 
-          {status === "ready" && matches.length === 0 && moreMatches.length > 0 ? (
+          {status === "ready" && topPicks.length === 0 && seeMore.length > 0 ? (
             <div className="rounded-2xl border border-hairline bg-surface-container-lowest p-4 text-center">
               <p className="text-sm font-bold">No confirmed matches</p>
               <p className="text-xs text-on-surface-variant mt-1">
@@ -287,7 +251,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
             </div>
           ) : null}
 
-          {status === "ready" && matches.length === 0 && moreMatches.length === 0 ? (
+          {status === "ready" && topPicks.length === 0 && seeMore.length === 0 ? (
             <div className="rounded-2xl border border-hairline bg-surface-container-lowest p-4 text-center">
               <p className="text-sm font-bold">No matches for these filters</p>
               <p className="text-xs text-on-surface-variant mt-1">
@@ -307,7 +271,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
             aria-busy={status === "loading"}
             className={`flex flex-col gap-3 transition-opacity ${status === "loading" ? "opacity-50" : ""}`}
           >
-            {matches.map((match) => (
+            {topPicks.map((match) => (
               <FoodMatchCard
                 insightLabel="Why this pick"
                 key={match.id}
@@ -315,19 +279,19 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
               />
             ))}
 
-            {moreMatches.length > 0 ? (
+            {seeMore.length > 0 ? (
               <button
                 aria-expanded={showMore}
                 className="h-12 rounded-full border-[1.5px] border-primary text-primary-ink text-sm font-bold flex items-center justify-center gap-1 hover:bg-primary-tint active:scale-[0.98] transition-transform tabular-nums"
                 onClick={() => setShowMore((open) => !open)}
                 type="button"
               >
-                <span>{showMore ? "Show less" : `See more (${moreMatches.length})`}</span>
+                <span>{showMore ? "Show less" : `See more (${seeMore.length})`}</span>
                 <MaterialIcon name={showMore ? "expand_less" : "expand_more"} className="text-[18px]" />
               </button>
             ) : null}
 
-            {showMore ? <MoreMatchesList items={moreMatches} /> : null}
+            {showMore ? <MoreMatchesList items={seeMore} /> : null}
           </div>
         </main>
 

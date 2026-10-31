@@ -77,21 +77,21 @@ const decideCases = [
 ];
 for (const { label, expectAreas, expectName, expectLabels, ...payload } of decideCases) {
   const { status, data } = await post("/api/decide", payload);
-  const recs = data.recommendations;
-  const more = data.moreMatches;
+  // Which matches become top picks is arrangeFeed's, checked by its unit tests (npm test), not here
+  const all = data.matches;
   const query = data.query;
   const tags = query ? [...query.areas, ...query.groups.map((g) => g.label)].join(", ") : "none";
   report(
     `POST /api/decide (${label})`,
-    status === 200 && Array.isArray(recs) && Array.isArray(more),
+    status === 200 && Array.isArray(all),
     status === 200
-      ? `${recs?.length ?? 0} top, ${more?.length ?? 0} more, engine ${data.engine}, read as [${tags}]`
+      ? `${all?.length ?? 0} matches, engine ${data.engine}, read as [${tags}]`
       : `status ${status}: ${data.error ?? ""}`,
   );
-  if (Array.isArray(recs) && Array.isArray(more)) {
-    const all = [...recs, ...more];
+  if (Array.isArray(all)) {
     report(`  query echoed (${label})`, Array.isArray(query?.areas) && Array.isArray(query?.groups));
-    report(`  top picks <= 3 (${label})`, recs.length <= 3);
+    report(`  all carry hits and exact (${label})`, all.every((r) => Array.isArray(r.hits) && Number.isInteger(r.exact) && r.exact <= r.hits.length));
+    if (query?.groups.length) report(`  all match a food group (${label})`, all.every((r) => r.hits.length > 0));
     report(`  cheapest meal within RM${payload.maxBudget} (${label})`, all.every((r) => r.priceMinMYR <= r.priceMaxMYR && r.priceMinMYR <= payload.maxBudget));
     report(`  withinBudget matches price range (${label})`, all.every((r) => r.withinBudget === r.priceMaxMYR <= payload.maxBudget));
     report(`  all carry diet answers (${label})`, all.every((r) => r.diet && typeof r.diet === "object"));
@@ -100,27 +100,25 @@ for (const { label, expectAreas, expectName, expectLabels, ...payload } of decid
       report(`  found some (${label})`, all.length > 0);
       report(`  all in ${expectAreas} (${label})`, all.every((r) => expectAreas.includes(r.area)));
     }
-    // A dish can match through serves or the menu too, so only some top pick need carry it in the name
-    if (expectName) report(`  a top pick named ${expectName} (${label})`, recs.some((r) => expectName.test(r.venueName)));
+    // A dish can match through serves or the menu too, so only some matches need carry it in the name
+    if (expectName) report(`  a match named ${expectName} (${label})`, all.some((r) => expectName.test(r.venueName)));
     if (expectLabels) {
       report(`  read as ${expectLabels} (${label})`, query?.groups.map((g) => g.label).join("|") === expectLabels.join("|"));
       report(`  found some (${label})`, all.length > 0);
     }
     if (payload.dietaryRestrictions.includes("Halal")) {
-      report(`  top picks all halal (${label})`, recs.every((r) => r.isHalal));
+      report(`  none known non-halal (${label})`, all.every((r) => r.diet.isHalal !== "non-halal"));
     }
     // A named area overrides the distance limit
     if (payload.maxDistanceKm !== null && !query?.areas.length) {
       report(`  all within ${payload.maxDistanceKm} km (${label})`, all.every((r) => r.distanceMeters === undefined || r.distanceMeters <= payload.maxDistanceKm * 1000));
     }
-    // A venue nobody has checked is kept, but only under See more: the top picks must be confirmed, and no
-    // venue known to break a ticked filter may appear at all.
+    // A venue nobody has checked is kept (arrangeFeed keeps it out of the top picks), but no venue known to break
+    // a ticked filter may appear at all.
     if (payload.dietaryRestrictions.includes("Vegetarian")) {
-      report(`  top picks all vegetarian (${label})`, recs.every((r) => r.isVegetarian));
       report(`  none known non-vegetarian (${label})`, all.every((r) => r.diet.vegetarian !== "no" || r.diet.vegan === "yes"));
     }
     if (payload.dietaryRestrictions.includes("No Seafood")) {
-      report(`  top picks all seafood-free (${label})`, recs.every((r) => r.diet.noSeafoodOption === "yes"));
       report(`  none known to serve seafood (${label})`, all.every((r) => r.diet.noSeafoodOption !== "no"));
     }
     report(`  all have a Maps link (${label})`, all.every((r) => /^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&/.test(r.mapsUrl)));

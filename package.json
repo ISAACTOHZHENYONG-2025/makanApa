@@ -11,7 +11,8 @@
     "db:import-nearby": "npx tsx scripts/venues/import-nearby-venues.ts",
     "db:export-sheet": "npx tsx scripts/venues/export-venues-sheet.ts",
     "db:import-sheet": "npx tsx scripts/venues/import-venues-sheet.ts",
-    "venues:photos": "npx tsx scripts/venues/venue-photo-list.ts"
+    "venues:photos": "npx tsx scripts/venues/venue-photo-list.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@google/genai": "^2.27.0",
@@ -31,6 +32,7 @@
     "sharp": "^0.35.5",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.12"
   }
 }
