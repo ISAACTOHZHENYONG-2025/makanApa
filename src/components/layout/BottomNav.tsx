@@ -36,7 +36,7 @@ export default function BottomNav({
       {actionLabel ? (
         <button
           className={`pointer-events-auto w-[calc(100%-2rem)] h-[52px] mx-auto mb-4 px-4 rounded-full bg-primary-fill hover:bg-primary-fill-hover active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100 text-on-primary font-bold text-sm flex items-center justify-between shadow-level-3 transition-all ${
-            pulse && !disabled ? "animate-pulse" : ""
+            pulse && !disabled ? "motion-safe:animate-pulse" : ""
           }`}
           disabled={disabled}
           onClick={onAction}
@@ -67,7 +67,7 @@ export default function BottomNav({
               key={tab.id}
             >
               <MaterialIcon name={tab.icon} className="text-[22px]" />
-              <span className={`text-[11px] tracking-tight ${active === tab.id ? "font-bold" : "font-medium"}`}>
+              <span className={`text-xs tracking-tight ${active === tab.id ? "font-bold" : "font-medium"}`}>
                 {tab.label}
               </span>
             </Link>

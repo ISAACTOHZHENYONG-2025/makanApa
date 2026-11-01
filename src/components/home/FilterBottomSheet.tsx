@@ -148,17 +148,14 @@ export default function FilterBottomSheet({
           onApply();
         }}
       >
-        <div className="w-full pt-3 pb-1.5 flex justify-center shrink-0">
-          <div className="w-10 h-1.5 rounded-full bg-hairline-strong" />
-        </div>
-
-        <div className="pl-5 pr-3 py-2 flex items-center justify-between border-b border-hairline shrink-0">
+        {/* No drag handle: the sheet can't be swiped down, so the close button and the backdrop dismiss it */}
+        <div className="pl-5 pr-2 pt-3 pb-2 flex items-center justify-between border-b border-hairline shrink-0">
           <h2 className="text-[19px] font-bold tracking-tight text-on-surface" id={titleId}>
             Filters
           </h2>
           <button
             aria-label="Close filters"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-on-surface hover:bg-surface-container active:scale-95 transition-all"
+            className="w-11 h-11 rounded-full flex items-center justify-center text-on-surface hover:bg-surface-container active:scale-95 transition-all"
             onClick={onClose}
             type="button"
           >
@@ -192,7 +189,7 @@ export default function FilterBottomSheet({
               {draft.craving ? (
                 <button
                   aria-label="Clear craving"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-surface-container"
+                  className="absolute right-0.5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-muted hover:bg-surface-container"
                   onClick={() => onChange({ ...draft, craving: "" })}
                   type="button"
                 >
@@ -207,7 +204,7 @@ export default function FilterBottomSheet({
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-on-surface flex items-center gap-1.5" htmlFor="budget-input">
                 <MaterialIcon name="payments" className="text-primary text-[17px]" />
-                Budget Ceiling
+                Budget ceiling
               </label>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary-fill text-white shadow-sm tabular-nums">
                 {`RM${draft.budget} (${budgetTier(draft.budget)})`}
@@ -241,7 +238,7 @@ export default function FilterBottomSheet({
                 return (
                   <button
                     aria-pressed={selected}
-                    className={`h-9 text-center rounded-full text-xs transition-all active:scale-95 tabular-nums ${
+                    className={`h-11 text-center rounded-full text-xs transition-all active:scale-95 tabular-nums ${
                       selected
                         ? "font-bold bg-primary-fill hover:bg-primary-fill-hover text-white shadow-sm"
                         : "font-semibold bg-surface-container text-on-surface-variant hover:bg-hairline"
@@ -275,7 +272,7 @@ export default function FilterBottomSheet({
                 return (
                   <button
                     aria-checked={selected}
-                    className={`flex-1 h-9 px-2 rounded-full text-xs transition-all ${
+                    className={`flex-1 h-11 px-2 rounded-full text-xs transition-all ${
                       selected
                         ? "font-bold bg-surface shadow-level-1 text-on-surface"
                         : "font-semibold text-on-surface-variant hover:text-on-surface"
@@ -298,7 +295,7 @@ export default function FilterBottomSheet({
           <div>
             <p className="text-xs font-bold text-on-surface mb-2 flex items-center gap-1.5">
               <MaterialIcon name="eco" className="text-primary text-[17px]" />
-              Dietary &amp; Preference Tags
+              More diet filters
             </p>
             <div className="flex flex-wrap gap-2">{DIET_TOGGLES.map(renderTag)}</div>
           </div>

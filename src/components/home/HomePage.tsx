@@ -185,7 +185,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
           <div className="flex items-center justify-between px-1">
             <h2 className="text-[15px] font-extrabold text-on-surface tracking-tight">Top picks</h2>
             {status === "ready" ? (
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary-tint text-primary-ink tabular-nums">
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-primary-tint text-primary-ink tabular-nums">
                 {countLabel}
               </span>
             ) : null}
@@ -204,7 +204,7 @@ export default function HomePage({ initialFilters, initialData }: HomePageProps)
                 ))}
               </div>
               {showRefining ? (
-                <span className="shrink-0 flex items-center gap-1 text-[11px] font-semibold text-on-surface-variant py-0.5">
+                <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-on-surface-variant py-0.5">
                   <MaterialIcon name="progress_activity" className="text-[14px] motion-safe:animate-spin" />
                   Refining…
                 </span>

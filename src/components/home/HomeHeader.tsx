@@ -42,7 +42,7 @@ export default function HomeHeader({ filters, onChange, onOpenFilters, onOpenSea
           {craving ? (
             <button
               aria-label="Clear search"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container"
+              className="absolute right-0.5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container"
               onClick={() => onChange({ ...filters, craving: "" })}
               type="button"
             >
@@ -72,15 +72,16 @@ export default function HomeHeader({ filters, onChange, onOpenFilters, onOpenSea
         {filters.tags.map((tag) => {
           const label = tagLabel(tag);
           return (
-            // Two buttons side by side: the label opens the sheet, the cross removes the filter
-            <div className={`${chipClass} pr-1`} key={tag}>
-              <button className="flex items-center gap-1 h-full" onClick={onOpenFilters} type="button">
+            // Two buttons side by side: the label opens the sheet, the cross removes the filter. The cross gets the
+            // chip's full height and reaches 44 px tall into the row's padding, so a thumb can't easily miss it.
+            <div className={`${chipClass} pr-0`} key={tag}>
+              <button className="flex items-center gap-1 h-full pr-0.5" onClick={onOpenFilters} type="button">
                 <MaterialIcon name="verified" className="text-[15px] text-primary" />
                 <span>{label}</span>
               </button>
               <button
                 aria-label={`Remove ${label} filter`}
-                className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-primary/15"
+                className="relative w-9 h-9 rounded-full flex items-center justify-center hover:bg-primary/15 before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']"
                 onClick={() => onChange({ ...filters, tags: filters.tags.filter((t) => t !== tag) })}
                 type="button"
               >
