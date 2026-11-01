@@ -44,3 +44,6 @@ next-env.d.ts
 /venues.csv
 # raw Google Places results cached by `npm run db:import-nearby`
 /data/places-cache/
+
+# Windows Explorer folder settings (OneDrive creates these)
+desktop.ini
