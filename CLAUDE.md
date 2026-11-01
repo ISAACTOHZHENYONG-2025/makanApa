@@ -1,2 +1,3 @@
 @AGENTS.md
+@OBJECTIVES.md
 @DESIGN.md
