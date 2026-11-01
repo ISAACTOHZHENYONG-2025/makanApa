@@ -42,7 +42,7 @@ After a 429, `/api/decide` stops calling Groq until its `retry-after` passes and
 - **`/filter`**: the filter sheet (craving, budget, distance, diet). Apply runs the search right away.
   Ticking a diet tag still filters the cached cards on the client instantly. Halal is one choice:
   Halal only, Non-halal only or Any.
-- **`POST /api/decide`**: loads venues from Firestore plus a few hard-coded off-campus spots and reads
+- **`POST /api/decide`**: loads venues from Firestore (or a small built-in list when that fails) and reads
   the search box ("sec17, chinese, rice", "zus", "bakuteh") into areas and food groups. Groq does that
   reading (cached per search text for a day); it never sees venues, prices or diet data. Code then filters
   by budget, diet, straight-line distance from the UM campus centre (skipped when the search names an
