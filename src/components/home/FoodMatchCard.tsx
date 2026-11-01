@@ -42,6 +42,17 @@ export default function FoodMatchCard({ match, insightLabel }: FoodMatchCardProp
                 <span>{match.distanceLabel}</span>
               </p>
             ) : null}
+            {/* One line instead of a boxed section keeps three picks short enough to compare on a phone. Nothing to
+                say when nobody has filled in what the venue serves. */}
+            {match.serves ? (
+              <p className="text-xs text-on-surface-variant flex items-start gap-1 mt-0.5">
+                <MaterialIcon name="restaurant" className="text-[13px] text-primary shrink-0 mt-px" />
+                <span className="line-clamp-2 capitalize">
+                  <span className="sr-only">Serves: </span>
+                  {match.serves}
+                </span>
+              </p>
+            ) : null}
           </div>
           <div className="text-right shrink-0">
             <div className="text-[18px] font-black leading-none text-primary-ink tabular-nums">{match.price}</div>
@@ -54,19 +65,6 @@ export default function FoodMatchCard({ match, insightLabel }: FoodMatchCardProp
             </span>
           </div>
         </div>
-
-        {/* Nothing to say when nobody has filled in what the venue serves */}
-        {match.serves ? (
-          <div className="bg-surface-container border border-hairline rounded-xl p-2.5 min-w-0">
-            <span className="text-[11px] uppercase tracking-wider font-bold text-primary-ink block leading-none">
-              Serves
-            </span>
-            {/* Two lines before cutting off, so a longer list like "chicken chop, fries, nugget…" still shows */}
-            <span className="mt-1 text-[13px] font-bold text-on-surface leading-snug line-clamp-2 capitalize">
-              {match.serves}
-            </span>
-          </div>
-        ) : null}
 
         <div className="rounded-xl p-2.5 bg-amber-tint border border-amber/40 text-on-surface flex items-start gap-2">
           <MaterialIcon name="lightbulb" className="text-[18px] text-amber shrink-0 mt-px" />
