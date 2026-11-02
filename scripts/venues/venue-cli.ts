@@ -1,14 +1,5 @@
 import * as readline from "readline";
-import {
-  collection,
-  getDocs,
-  doc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  deleteField,
-  type FieldValue,
-} from "firebase/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { normalizeVenueDiet } from "../../src/lib/diet";
 import { formatPriceRange, parsePriceRange, venuePriceRange } from "../../src/lib/price";
 import type { HalalStatus, Venue } from "../../src/lib/types";
@@ -47,7 +38,7 @@ interface VenueDoc {
 }
 
 async function listVenues(): Promise<VenueDoc[]> {
-  const snapshot = await getDocs(collection(db, "venues"));
+  const snapshot = await db.collection("venues").get();
   const venues: VenueDoc[] = [];
 
   snapshot.forEach((d) => {
@@ -133,7 +124,7 @@ async function handleAdd() {
     createdAt: new Date().toISOString(),
   };
 
-  const docRef = await addDoc(collection(db, "venues"), newDoc);
+  const docRef = await db.collection("venues").add(newDoc);
   console.log(`\n✅ Venue added successfully with ID: ${docRef.id}`);
 }
 
@@ -171,7 +162,7 @@ async function handleEdit() {
   else if (newPrice) {
     updates.priceMinMYR = newPrice.min;
     updates.priceMaxMYR = newPrice.max;
-    updates.avgPriceMYR = deleteField(); // replaced by the range
+    updates.avgPriceMYR = FieldValue.delete(); // replaced by the range
   }
   if (halalStr) {
     const answer = halalStr.toLowerCase();
@@ -183,7 +174,7 @@ async function handleEdit() {
     return;
   }
 
-  await updateDoc(doc(db, "venues", target.id), updates);
+  await db.collection("venues").doc(target.id).update(updates);
   console.log(`\n✅ Successfully updated '${target.name}'!`);
 }
 
@@ -208,7 +199,7 @@ async function handleDelete() {
 
   const confirm = await ask(`⚠️ Are you sure you want to delete '${target.name}'? (yes/no): `);
   if (confirm.toLowerCase() === "yes" || confirm.toLowerCase() === "y") {
-    await deleteDoc(doc(db, "venues", target.id));
+    await db.collection("venues").doc(target.id).delete();
     console.log(`\n🗑️ Deleted venue: '${target.name}'`);
   } else {
     console.log("Cancelled deletion.");

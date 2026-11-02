@@ -10,7 +10,7 @@ export default function FilterPage() {
   const [draft, setDraft] = useState<FilterDraft>(DEFAULT_FILTERS);
 
   return (
-    <div className="bg-[#f0f3f6] min-h-screen">
+    <div className="bg-surface-container min-h-dvh">
       <FilterBottomSheet
         draft={draft}
         onApply={() => router.push(`/?${filtersToSearchParams(draft)}`)}

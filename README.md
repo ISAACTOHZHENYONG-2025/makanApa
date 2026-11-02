@@ -39,11 +39,10 @@ After a 429, `/api/decide` stops calling Groq until its `retry-after` passes and
 ## How it works
 
 - **`/`**: the home feed, with the top recommendations and a list of more matches.
-- **`/filter`**: the filter sheet (craving, budget, distance, diet). Diet and other simple toggles
-  filter the cached cards on the client right away. Budget and distance changes mark the results
-  stale until the user asks for an update. Halal and Non-halal can be picked one, both or neither
-  (both or neither means no halal preference).
-- **`POST /api/decide`**: loads venues from Firestore plus a few hard-coded off-campus spots and reads
+- **`/filter`**: the filter sheet (craving, budget, distance, diet). Apply runs the search right away.
+  Ticking a diet tag still filters the cached cards on the client instantly. Halal is one choice:
+  Halal only, Non-halal only or Any.
+- **`POST /api/decide`**: loads venues from Firestore (or a small built-in list when that fails) and reads
   the search box ("sec17, chinese, rice", "zus", "bakuteh") into areas and food groups. Groq does that
   reading (cached per search text for a day); it never sees venues, prices or diet data. Code then filters
   by budget, diet, straight-line distance from the UM campus centre (skipped when the search names an
@@ -78,7 +77,7 @@ Venues live in the Firestore `venues` collection. Every script reads its keys fr
 
 | Command | What it does |
 | --- | --- |
-| `npm run db:import-nearby` | Imports food places around UM from Google Places. Supports `--area=<um, bangsar, ss2, taman-paramount or sec17>`, `--min-reviews=<n>`, `--dry-run`, `--extent=<metres>`, `--max-calls=<n>`, `--resume` and `--use-cache`. Safe to re-run: places are keyed by Google place ID and near-duplicates are skipped. |
+| `npm run db:import-nearby` | Imports food places around UM from Google Places. Supports `--area=<um, bangsar, ss2, taman-paramount, sec17 or kl-gateway>` (kl-gateway is a mall, so it runs text searches inside the building instead of a grid), `--min-reviews=<n>`, `--dry-run`, `--extent=<metres>`, `--max-calls=<n>`, `--resume` and `--use-cache`. Safe to re-run: places are keyed by Google place ID and near-duplicates are skipped. |
 | `npm run db:export-sheet` | Writes every venue to `venues.csv` so halal, diet flags, price, foods, cuisine and allergy notes can be filled in by hand. |
 | `npm run db:import-sheet` | Reads the edited `venues.csv` back into Firestore. Use `--dry-run` first. Blank cells leave a field unchanged. `halal` is `halal`, `non-halal` or `unknown`; `vegetarian`, `vegan` and `noSeafood` are `yes`, `no` or `unknown` (the old `Y` / `N` still load). `serves` lists what the venue is known for ("bak kut teh, chicken rice"); search reads it. `cuisine` starts as Google's label; correct it here when Google is wrong, and Places imports leave it alone. |
 | `npm run db:cli` | Interactive terminal tool to view, add, edit and delete venues. |

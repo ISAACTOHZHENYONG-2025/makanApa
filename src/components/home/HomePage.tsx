@@ -1,22 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DecideResponseData, RecommendationItem, VenueMatch } from "@/lib/decide/types";
+import type { DecideResponseData, VenueMatch } from "@/app/api/decide/route";
 import BottomNav from "@/components/layout/BottomNav";
 import { decide, toDecidePayload } from "@/lib/apiClient";
-import { assessDiet } from "@/lib/diet";
-import type { FilterDraft } from "@/lib/filters";
+import { filtersToSearchParams, type FilterDraft } from "@/lib/filters";
+import { arrangeFeed } from "@/lib/feed";
+import { EMPTY_QUERY } from "@/lib/search";
 import FilterBottomSheet from "./FilterBottomSheet";
 import FoodMatchCard from "./FoodMatchCard";
 import HomeHeader from "./HomeHeader";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import MoreMatchesList from "./MoreMatchesList";
-import { fromRecommendation } from "./foodMatch";
+import SkeletonCard from "./SkeletonCard";
+import { fromTopPick } from "./foodMatch";
 
 type Status = "loading" | "ready" | "error";
 
 type HomePageProps = {
   initialFilters: FilterDraft;
+  // The first results, worked out on the server with the page; absent if that failed
+  initialData?: DecideResponseData;
 };
 
 // Filter changes that need a refetch. A newly ticked diet tag doesn't: the feed hides non-matching cards itself.
@@ -32,148 +36,183 @@ function countChanges(applied: FilterDraft, fetched: FilterDraft) {
   return changes;
 }
 
-function SkeletonCard() {
-  return (
-    <div className="bg-surface rounded-2xl border border-[#E9ECEF] overflow-hidden animate-pulse">
-      <div className="h-36 bg-surface-container" />
-      <div className="p-3.5 flex flex-col gap-2.5">
-        <div className="h-4 w-2/3 rounded bg-surface-container" />
-        <div className="h-3 w-1/2 rounded bg-surface-container" />
-        <div className="h-12 rounded-xl bg-surface-container-low" />
-      </div>
-    </div>
-  );
+// What went wrong and what to do, in plain words; the technical detail goes to the console.
+// fetch() itself throws a TypeError when the request never reaches the server.
+function friendlyError(err: unknown) {
+  if (err instanceof TypeError || (typeof navigator !== "undefined" && !navigator.onLine)) {
+    return "Couldn't reach makanApa. Check your connection and try again.";
+  }
+  return "Something went wrong on our side. Try again in a moment.";
 }
 
-export default function HomePage({ initialFilters }: HomePageProps) {
+export default function HomePage({ initialFilters, initialData }: HomePageProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Set when the header search bar opens the sheet, so the craving box gets the cursor
+  const [focusCraving, setFocusCraving] = useState(false);
   const [applied, setApplied] = useState<FilterDraft>(initialFilters);
   const [draft, setDraft] = useState<FilterDraft>(initialFilters);
-  const [fetchedFor, setFetchedFor] = useState<FilterDraft | null>(null);
-  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
-  const [fetchedMoreMatches, setFetchedMoreMatches] = useState<VenueMatch[]>([]);
-  const [query, setQuery] = useState<DecideResponseData["query"] | null>(null);
+  const [fetchedFor, setFetchedFor] = useState<FilterDraft | null>(initialData ? initialFilters : null);
+  // Every venue the last search found; arrangeFeed below turns them into top picks and See more
+  const [fetchedMatches, setFetchedMatches] = useState<VenueMatch[]>(initialData?.matches ?? []);
+  const [query, setQuery] = useState<DecideResponseData["query"] | null>(initialData?.query ?? null);
   const [showMore, setShowMore] = useState(false);
-  const [status, setStatus] = useState<Status>("loading");
+  const [status, setStatus] = useState<Status>(initialData ? "ready" : "loading");
   const [error, setError] = useState("");
+  // The AI is still reading the search text; the quick results are already showing
+  const [refining, setRefining] = useState(false);
   const latestRequest = useRef(0);
 
-  const loadMatches = useCallback(async (filters: FilterDraft) => {
-    const requestId = ++latestRequest.current;
-    const payload = toDecidePayload(filters);
-    let quick: DecideResponseData;
+  // The AI's reading of the craving (spelling fixes, synonyms, "chinese rice" as two things), when the server says
+  // one could still change the quick results; on any failure the quick results stay
+  const refine = useCallback(async (requestId: number, filters: FilterDraft, quick: DecideResponseData) => {
+    if (!quick.aiCanRefine) return;
+    setRefining(true);
     try {
-      // Code's reading of the craving first, so the page never waits on the AI
-      quick = await decide({ ...payload, skipAi: true });
-      if (requestId !== latestRequest.current) return;
-      setRecommendations(quick.recommendations);
-      setFetchedMoreMatches(quick.moreMatches);
-      setQuery(quick.query);
-      setShowMore(false);
-      setFetchedFor(filters);
-      setStatus("ready");
-    } catch (err) {
-      if (requestId !== latestRequest.current) return;
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-      setStatus("error");
-      return;
-    }
-
-    // Then the AI's reading (spelling fixes, synonyms, "chinese rice" as two things) when there is a craving and it
-    // wasn't already cached; on any failure the quick results stay
-    if (!payload.craving || quick.engine === "ai") return;
-    try {
-      const smart = await decide(payload);
+      const smart = await decide(toDecidePayload(filters));
       if (requestId !== latestRequest.current || smart.engine !== "ai") return;
-      setRecommendations(smart.recommendations);
-      setFetchedMoreMatches(smart.moreMatches);
+      setFetchedMatches(smart.matches);
       setQuery(smart.query);
     } catch {
       // Keep the quick results
+    } finally {
+      // A newer search has its own hint
+      if (requestId === latestRequest.current) setRefining(false);
     }
   }, []);
 
+  const loadMatches = useCallback(
+    async (filters: FilterDraft) => {
+      const requestId = ++latestRequest.current;
+      let quick: DecideResponseData;
+      try {
+        // Code's reading of the craving first, so the page never waits on the AI
+        quick = await decide({ ...toDecidePayload(filters), skipAi: true });
+        if (requestId !== latestRequest.current) return;
+        setFetchedMatches(quick.matches);
+        setQuery(quick.query);
+        setShowMore(false);
+        setFetchedFor(filters);
+        setRefining(false);
+        setStatus("ready");
+      } catch (err) {
+        if (requestId !== latestRequest.current) return;
+        console.error("Could not load recommendations:", err);
+        setError(friendlyError(err));
+        setStatus("error");
+        return;
+      }
+      await refine(requestId, filters, quick);
+    },
+    [refine],
+  );
+
   useEffect(() => {
-    // Initial fetch on mount; state is only set after the request resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadMatches(initialFilters);
-  }, [loadMatches, initialFilters]);
+    // The server usually sent the quick results with the page; then only the AI's reading is left to fetch.
+    // Apart from the "Refining…" hint, state is only set after a request resolves.
+    if (initialData) {
+      void refine(++latestRequest.current, initialFilters, initialData);
+    } else {
+      void loadMatches(initialFilters);
+    }
+  }, [initialData, initialFilters, loadMatches, refine]);
 
-  const filtersChanged = fetchedFor ? countChanges(applied, fetchedFor) : 0;
-  const stale = filtersChanged > 0;
-
-  const dietFilter = toDecidePayload(applied).dietaryRestrictions;
-  // The budget the server used, which "Budget Meal" caps at RM10
+  // The budget the server used
   const fetchedBudget = fetchedFor ? toDecidePayload(fetchedFor).maxBudget : 0;
-  // Venues known to break a ticked filter are hidden. Venues nobody has checked for one stay, but only under
-  // See more with a label, after the confirmed ones. Only confirmed venues become top matches.
-  const assess = <T extends VenueMatch>(items: T[]) =>
-    items.map((item) => ({ item, ...assessDiet(item.diet, dietFilter) })).filter((entry) => entry.fits);
-  const assessedTop = assess(recommendations);
-  const assessedMore = assess(fetchedMoreMatches);
-  const matches = assessedTop
-    .filter((entry) => entry.unconfirmed.length === 0)
-    .map((entry, index) => fromRecommendation(entry.item, index, fetchedBudget));
-  const moreMatches = [
-    ...assessedMore.filter((entry) => entry.unconfirmed.length === 0),
-    ...[...assessedTop, ...assessedMore].filter((entry) => entry.unconfirmed.length > 0),
-  ].map(({ item, unconfirmed }) => ({ match: item as VenueMatch, unconfirmed }));
+  // A newly ticked diet tag needs no new search: arranging the same matches again hides what it rules out, and
+  // fills the top picks from See more. Before the AI's reading arrives, query is code's reading.
+  const feed = arrangeFeed(fetchedMatches, toDecidePayload(applied).dietaryRestrictions, query ?? EMPTY_QUERY);
+  const topPicks = feed.topPicks.map((pick, index) => fromTopPick(pick, index, fetchedBudget));
+  const seeMore = feed.seeMore;
 
-  const applyFilters = () => {
-    setApplied(draft);
-    setSheetOpen(false);
+  const openSheet = (focus: boolean) => {
+    setDraft(applied);
+    setFocusCraving(focus);
+    setSheetOpen(true);
   };
 
-  const updateResults = () => {
+  const search = (filters: FilterDraft) => {
     setStatus("loading");
-    void loadMatches(applied);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    void loadMatches(filters);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
   };
 
-  const actionLabel = stale
-    ? `Update Results (${filtersChanged} Filter${filtersChanged === 1 ? "" : "s"} Changed)`
-    : status === "loading"
-      ? "Finding Meals..."
-      : "Find My Optimal Meal";
-  const totalMatches = matches.length + moreMatches.length;
+  // From the sheet's "Show results", or a header chip's remove button
+  const applyFilters = (next: FilterDraft) => {
+    setApplied(next);
+    setSheetOpen(false);
+    // Keeps the filters on refresh. replaceState neither reloads nor remounts the page.
+    window.history.replaceState(null, "", `/?${filtersToSearchParams(next).toString()}`);
+    // A newly ticked diet tag only hides cards, so it needs no request
+    if (!fetchedFor || countChanges(next, fetchedFor) > 0) search(next);
+  };
+
+  const topCount = topPicks.length;
+  const moreCount = seeMore.length;
+  const countLabel = `${topCount} top pick${topCount === 1 ? "" : "s"}${moreCount > 0 ? ` · ${moreCount} more` : ""}`;
+  const announcement =
+    status === "loading"
+      ? "Finding meals…"
+      : status === "error"
+        ? `Couldn't load recommendations. ${error}`
+        : countLabel.replace(" · ", ", ");
+
+  // The sticky bar only shows when it says something the header doesn't: a search in progress, or a retry after an
+  // error. With results showing, the header's search bar and Filters chip already open the sheet.
+  // It is disabled while loading, so its only action is the retry.
+  const barLabel = status === "error" ? "Try again" : status === "loading" ? "Finding meals…" : undefined;
   // What the craving was read as, e.g. ["Section 17", "chinese", "rice"]
   const queryTags = query ? [...query.areas, ...query.groups.map((g) => g.label)] : [];
+  // Not while a new search is loading: the old request's flag may still be set
+  const showRefining = refining && status !== "loading";
 
   return (
-    <div className="bg-[#f0f3f6] text-on-surface antialiased min-h-screen flex justify-center">
-      <div className="w-full max-w-[420px] bg-background min-h-screen flex flex-col relative shadow-2xl">
+    <div className="bg-surface-container text-on-surface antialiased min-h-dvh flex justify-center">
+      <div className="w-full max-w-[420px] bg-background min-h-dvh flex flex-col relative shadow-2xl">
         <HomeHeader
           filters={applied}
-          onOpenFilters={() => {
-            setDraft(applied);
-            setSheetOpen(true);
-          }}
+          onChange={applyFilters}
+          onOpenFilters={() => openSheet(false)}
+          onOpenSearch={() => openSheet(true)}
         />
 
-        <main className="flex-1 px-3 pt-3 flex flex-col gap-3 pb-24">
+        {/* Room for the last card to scroll clear of the sticky bar, when it shows */}
+        <main className={`flex-1 px-3 pt-3 flex flex-col gap-3 ${barLabel ? "pb-24" : "pb-6"}`}>
+          <p aria-live="polite" className="sr-only" role="status">
+            {announcement}
+          </p>
+
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-[15px] font-extrabold text-on-surface tracking-tight">Top Matches</h2>
+            <h2 className="text-[15px] font-extrabold text-on-surface tracking-tight">Top picks</h2>
             {status === "ready" ? (
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#E6F7ED] text-primary tabular-nums">
-                {totalMatches} Found
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-primary-tint text-primary-ink tabular-nums">
+                {countLabel}
               </span>
             ) : null}
           </div>
 
-          {queryTags.length > 0 ? (
-            <div aria-label="Searching for" className="flex flex-wrap gap-1 px-1 -mt-1">
-              {queryTags.map((tag) => (
-                <span
-                  className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-[6px] bg-[#F1F3F5] text-[#495057]"
-                  key={tag}
-                >
-                  {tag}
+          {queryTags.length > 0 || showRefining ? (
+            <div className="flex items-start justify-between gap-2 px-1 -mt-1">
+              <div aria-label="Searching for" className="flex flex-wrap gap-1">
+                {queryTags.map((tag) => (
+                  <span
+                    className="text-[11px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-[6px] bg-surface-container text-on-surface-variant"
+                    key={tag}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              {showRefining ? (
+                <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-on-surface-variant py-0.5">
+                  <MaterialIcon name="progress_activity" className="text-[14px] motion-safe:animate-spin" />
+                  Refining…
                 </span>
-              ))}
+              ) : null}
             </div>
           ) : null}
 
-          {status === "loading" && matches.length === 0 ? (
+          {status === "loading" && topPicks.length === 0 ? (
             <>
               <SkeletonCard />
               <SkeletonCard />
@@ -181,12 +220,12 @@ export default function HomePage({ initialFilters }: HomePageProps) {
           ) : null}
 
           {status === "error" ? (
-            <div className="rounded-2xl border border-error/30 bg-error-container p-4 text-on-error-container">
+            <div className="rounded-2xl border border-error/30 bg-error-container p-4 text-on-error-container" role="alert">
               <p className="text-sm font-bold">Couldn&apos;t load recommendations</p>
               <p className="text-xs mt-1">{error}</p>
               <button
                 className="mt-3 h-9 px-4 rounded-full bg-error text-on-error text-xs font-bold active:scale-95 transition-transform"
-                onClick={updateResults}
+                onClick={() => search(applied)}
                 type="button"
               >
                 Try again
@@ -194,26 +233,45 @@ export default function HomePage({ initialFilters }: HomePageProps) {
             </div>
           ) : null}
 
-          {status === "ready" && matches.length === 0 && moreMatches.length > 0 ? (
-            <div className="rounded-2xl border border-[#E9ECEF] bg-surface-container-lowest p-4 text-center">
+          {status === "ready" && topPicks.length === 0 && seeMore.length > 0 ? (
+            <div className="rounded-2xl border border-hairline bg-surface-container-lowest p-4 text-center">
               <p className="text-sm font-bold">No confirmed matches</p>
               <p className="text-xs text-on-surface-variant mt-1">
                 Nothing here is confirmed for your diet choices yet. See more shows venues still to be checked.
               </p>
+              {!showMore ? (
+                <button
+                  className="mt-3 h-9 px-4 rounded-full border-[1.5px] border-primary text-primary-ink text-xs font-bold hover:bg-primary-tint active:scale-95 transition-transform tabular-nums"
+                  onClick={() => setShowMore(true)}
+                  type="button"
+                >
+                  Show {moreCount} unconfirmed
+                </button>
+              ) : null}
             </div>
           ) : null}
 
-          {status === "ready" && matches.length === 0 && moreMatches.length === 0 ? (
-            <div className="rounded-2xl border border-[#E9ECEF] bg-surface-container-lowest p-4 text-center">
+          {status === "ready" && topPicks.length === 0 && seeMore.length === 0 ? (
+            <div className="rounded-2xl border border-hairline bg-surface-container-lowest p-4 text-center">
               <p className="text-sm font-bold">No matches for these filters</p>
               <p className="text-xs text-on-surface-variant mt-1">
                 Try another craving, a higher budget, or a longer distance.
               </p>
+              <button
+                className="mt-3 h-9 px-4 rounded-full border-[1.5px] border-primary text-primary-ink text-xs font-bold hover:bg-primary-tint active:scale-95 transition-transform"
+                onClick={() => openSheet(false)}
+                type="button"
+              >
+                Adjust filters
+              </button>
             </div>
           ) : null}
 
-          <div className={`flex flex-col gap-3 transition-opacity ${status === "loading" ? "opacity-50" : ""}`}>
-            {matches.map((match) => (
+          <div
+            aria-busy={status === "loading"}
+            className={`flex flex-col gap-3 transition-opacity ${status === "loading" ? "opacity-50" : ""}`}
+          >
+            {topPicks.map((match) => (
               <FoodMatchCard
                 insightLabel="Why this pick"
                 key={match.id}
@@ -221,34 +279,33 @@ export default function HomePage({ initialFilters }: HomePageProps) {
               />
             ))}
 
-            {moreMatches.length > 0 ? (
+            {seeMore.length > 0 ? (
               <button
                 aria-expanded={showMore}
-                className="h-12 rounded-full border-[1.5px] border-primary text-primary text-sm font-bold flex items-center justify-center gap-1 hover:bg-[#E6F7ED] active:scale-[0.98] transition-transform tabular-nums"
+                className="h-12 rounded-full border-[1.5px] border-primary text-primary-ink text-sm font-bold flex items-center justify-center gap-1 hover:bg-primary-tint active:scale-[0.98] transition-transform tabular-nums"
                 onClick={() => setShowMore((open) => !open)}
                 type="button"
               >
-                <span>{showMore ? "Show less" : `See more (${moreMatches.length})`}</span>
+                <span>{showMore ? "Show less" : `See more (${seeMore.length})`}</span>
                 <MaterialIcon name={showMore ? "expand_less" : "expand_more"} className="text-[18px]" />
               </button>
             ) : null}
 
-            {showMore ? <MoreMatchesList items={moreMatches} /> : null}
+            {showMore ? <MoreMatchesList items={seeMore} /> : null}
           </div>
         </main>
 
         <BottomNav
           active="explore"
-          actionBadge={status === "ready" ? `${totalMatches} Options` : undefined}
-          actionLabel={actionLabel}
+          actionLabel={barLabel}
           disabled={status === "loading"}
-          onAction={updateResults}
-          pulse={stale}
+          onAction={() => search(applied)}
         />
 
         <FilterBottomSheet
           draft={draft}
-          onApply={applyFilters}
+          focusCraving={focusCraving}
+          onApply={() => applyFilters(draft)}
           onChange={setDraft}
           onClose={() => setSheetOpen(false)}
           open={sheetOpen}

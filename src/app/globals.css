@@ -1,73 +1,68 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f8f9ff;
-  --foreground: #171c22;
-}
-
 @theme inline {
-  --color-background: #f8f9ff;
-  --color-foreground: #171c22;
+  --color-background: #f8f9fa;
   --color-primary: #00b14f;
   --color-primary-dark: #009643;
-  --color-primary-container: #00b14f;
+  --color-primary-ink: #007a33;
+  --color-primary-fill: #00873c;
+  --color-primary-fill-hover: #006f31;
+  --color-primary-tint: #e6f7ed;
+  --color-amber: #ffb800;
+  --color-amber-ink: #8a6100;
+  --color-amber-tint: #fff8e1;
+  --color-flame: #ff5722;
+  --color-flame-ink: #b33a12;
+  --color-flame-tint: #fbe9e7;
+  --color-hairline: #e9ecef;
+  --color-hairline-strong: #dee2e6;
+  --color-muted: #6c757d;
   --color-on-primary: #ffffff;
   --color-secondary: #7c5800;
   --color-secondary-container: #ffcd71;
-  --color-surface: #f8f9ff;
-  --color-on-surface: #171c22;
-  --color-on-surface-variant: #3f493f;
+  --color-surface: #ffffff;
+  --color-on-surface: #1e2329;
+  --color-on-surface-variant: #495057;
   --color-surface-container-low: #f0f4fc;
-  --color-surface-container: #eaeef7;
+  --color-surface-container: #f1f3f5;
   --color-surface-container-high: #e4e8f1;
   --color-surface-container-lowest: #ffffff;
   --color-primary-fixed: #9af7a7;
-  --color-on-primary-fixed-variant: #005321;
   --color-secondary-fixed: #ffdea7;
   --color-on-secondary-fixed: #271900;
   --color-tertiary-fixed: #ffdbd1;
   --color-on-tertiary-fixed: #3b0900;
   --color-error-container: #ffdad6;
   --color-on-error-container: #93000a;
-  --color-on-secondary-fixed-variant: #5e4200;
   --color-surface-container-highest: #dee3eb;
-  --color-surface-bright: #f8f9ff;
-  --color-on-tertiary-fixed-variant: #862200;
-  --color-primary-fixed-dim: #7eda8d;
-  --color-on-secondary-container: #785500;
-  --color-outline-variant: #becabb;
   --color-on-primary-fixed: #002109;
-  --color-inverse-primary: #7eda8d;
   --color-surface-variant: #dee3eb;
-  --color-on-tertiary: #ffffff;
-  --color-surface-dim: #d6dae3;
-  --color-on-background: #171c22;
-  --color-secondary-fixed-dim: #efbf65;
-  --color-tertiary: #872200;
   --color-tertiary-container: #b12f00;
-  --color-tertiary-fixed-dim: #ffb5a0;
-  --color-outline: #6f7a6e;
-  --color-on-primary-container: #91ee9e;
   --color-error: #ba1a1a;
   --color-on-error: #ffffff;
-  --color-on-tertiary-container: #ffcfc1;
-  --color-inverse-surface: #2c3137;
-  --color-surface-tint: #006e2e;
-  --color-inverse-on-surface: #edf1f9;
-  --color-on-secondary: #ffffff;
   --font-sans: var(--font-inter);
+  --shadow-level-1: 0 2px 8px rgba(30, 35, 41, 0.04);
+  --shadow-level-2: 0 6px 16px rgba(30, 35, 41, 0.08);
+  --shadow-level-3: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-primary-ink);
+    outline-offset: 2px;
+  }
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
-  background-color: #f2f4f7;
+  background-color: var(--color-surface-container);
   -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  color: var(--foreground);
+  color: var(--color-on-surface);
   font-family: var(--font-inter), Inter, -apple-system, BlinkMacSystemFont, sans-serif;
   overscroll-behavior-y: none;
   min-height: 100dvh;

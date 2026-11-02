@@ -4,7 +4,6 @@
 // Edit the file in Google Sheets or Excel, save it as CSV, then run `npm run db:import-sheet`.
 
 import * as fs from "fs";
-import { collection, getDocs } from "firebase/firestore";
 import type { Venue } from "../../src/lib/types";
 import { normalizeVenueDiet } from "../../src/lib/diet";
 import { googleMapsUrl } from "../../src/lib/mapsLinks";
@@ -29,7 +28,7 @@ runScript(async () => {
 
   const db = connectFirestore();
   const venues = sortByArea(
-    (await getDocs(collection(db, "venues"))).docs
+    (await db.collection("venues").get()).docs
       // Docs not re-imported since the three-word answers still hold true/false; read them as words
       .map((d) => normalizeVenueDiet({ ...(d.data() as Venue), id: d.id }))
       .map((v) => ({ ...v, area: venueArea(v.location) ?? "", distance: v.distanceMeters ?? Infinity })),

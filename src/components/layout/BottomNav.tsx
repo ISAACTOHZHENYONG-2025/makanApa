@@ -35,15 +35,15 @@ export default function BottomNav({
     <div className="fixed bottom-0 inset-x-0 max-w-[420px] mx-auto z-40 pointer-events-none flex flex-col">
       {actionLabel ? (
         <button
-          className={`pointer-events-auto w-[calc(100%-2rem)] h-[52px] mx-auto mb-4 px-4 rounded-full bg-primary hover:bg-primary-dark active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100 text-on-primary font-bold text-sm flex items-center justify-between shadow-[0_10px_30px_rgba(0,0,0,0.10)] transition-all ${
-            pulse && !disabled ? "animate-pulse" : ""
+          className={`pointer-events-auto w-[calc(100%-2rem)] h-[52px] mx-auto mb-4 px-4 rounded-full bg-primary-fill hover:bg-primary-fill-hover active:scale-[0.98] disabled:opacity-60 disabled:active:scale-100 text-on-primary font-bold text-sm flex items-center justify-between shadow-level-3 transition-all ${
+            pulse && !disabled ? "motion-safe:animate-pulse" : ""
           }`}
           disabled={disabled}
           onClick={onAction}
           type="button"
         >
           <span className="flex items-center gap-1.5">
-            <span aria-hidden>⚡</span>
+            <MaterialIcon name="bolt" className="text-[20px]" />
             <span>{actionLabel}</span>
           </span>
           {actionBadge ? (
@@ -55,19 +55,19 @@ export default function BottomNav({
       ) : null}
       {tabs.length > 1 ? (
         <nav
-          className="pointer-events-auto grid items-center bg-surface-container-lowest border-t border-[#E9ECEF] shadow-[0_10px_30px_rgba(0,0,0,0.10)] px-3 pt-2 pb-4"
+          className="pointer-events-auto grid items-center bg-surface border-t border-hairline shadow-level-3 px-3 pt-2 pb-4"
           style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
         >
           {tabs.map((tab) => (
             <Link
               className={`flex flex-col items-center gap-0.5 ${
-                active === tab.id ? "text-primary" : "text-on-surface-variant hover:text-on-surface"
+                active === tab.id ? "text-primary-ink" : "text-on-surface-variant hover:text-on-surface"
               }`}
               href={tab.href}
               key={tab.id}
             >
               <MaterialIcon name={tab.icon} className="text-[22px]" />
-              <span className={`text-[11px] tracking-tight ${active === tab.id ? "font-bold" : "font-medium"}`}>
+              <span className={`text-xs tracking-tight ${active === tab.id ? "font-bold" : "font-medium"}`}>
                 {tab.label}
               </span>
             </Link>

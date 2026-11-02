@@ -33,10 +33,7 @@ export const DIET_TOGGLES = [
   { id: "No Seafood", label: "No Seafood" },
 ];
 
-// A price preference, not a diet
-export const PREFERENCE_TAGS = [{ id: "Budget Meal", label: "Budget Meal < RM10" }];
-
-export const DIET_TAGS = [...HALAL_OPTIONS, ...DIET_TOGGLES, ...PREFERENCE_TAGS];
+export const DIET_TAGS = [...HALAL_OPTIONS, ...DIET_TOGGLES];
 
 // Filters travel from /filter to / in the URL so the home page can fetch with them.
 export function filtersToSearchParams(filters: FilterDraft): URLSearchParams {

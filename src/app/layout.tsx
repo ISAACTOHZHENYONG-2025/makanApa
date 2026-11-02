@@ -1,17 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
+// No weight list: Inter loads as a variable font (100–900), so font-black works too
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
 });
 
 // The only Material Symbols the app uses, so Google sends a 4 KB font instead of the 4 MB full set. Add a new
 // MaterialIcon name here or it shows as plain text. Google wants them A–Z, hence the sort.
 const ICON_NAMES = [
   "add_circle",
+  "bolt",
   "check",
   "close",
   "content_copy",
@@ -22,10 +23,12 @@ const ICON_NAMES = [
   "explore",
   "group_add",
   "groups",
+  "lightbulb",
   "location_on",
   "login",
   "logout",
   "near_me",
+  "open_in_new",
   "payments",
   "progress_activity",
   "restaurant",
@@ -45,10 +48,18 @@ export const metadata: Metadata = {
   description: "Campus dining matches for Universiti Malaya students.",
 };
 
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
+};
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <head>
+        {/* The icon font file comes from fonts.gstatic.com, which the browser only learns about once the stylesheet
+            has loaded. Connecting up front saves those round trips before the page shows. (React already preloads
+            the stylesheet itself, so fonts.googleapis.com needs no hint.) */}
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={ICON_FONT_URL} />
       </head>
       <body className="min-h-full flex flex-col font-sans">{children}</body>

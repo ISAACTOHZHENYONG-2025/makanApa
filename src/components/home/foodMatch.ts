@@ -1,6 +1,6 @@
-import type { RecommendationItem, VenueMatch } from "@/lib/decide/types";
+import type { TopPick, VenueMatch } from "@/app/api/decide/route";
 import { formatDistance } from "@/lib/geo";
-import { formatPriceRange } from "@/lib/price";
+import { priceLabel } from "@/lib/feed";
 
 export type FoodMatch = {
   id: string;
@@ -33,27 +33,23 @@ export function distanceLabel(match: VenueMatch) {
   return [match.area, distance].filter(Boolean).join(" · ") || undefined;
 }
 
-export function priceLabel(match: VenueMatch) {
-  return `RM${formatPriceRange({ min: match.priceMinMYR, max: match.priceMaxMYR })}`;
-}
-
-export function fromRecommendation(rec: RecommendationItem, index: number, budget: number): FoodMatch {
+export function fromTopPick(pick: TopPick, index: number, budget: number): FoodMatch {
   return {
-    id: `${index}-${rec.venueName}`,
-    venueId: rec.venueId,
+    id: pick.venueId ?? pick.venueName,
+    venueId: pick.venueId,
     rank: index + 1,
-    title: rec.venueName,
-    price: priceLabel(rec),
-    priceNote: rec.withinBudget ? `Under RM${budget}` : `Some over RM${budget}`,
-    priceWithinBudget: rec.withinBudget,
-    isHalal: rec.isHalal,
-    isVegetarian: rec.isVegetarian,
-    isVegan: rec.isVegan,
-    allergyNotes: rec.allergyNotes,
-    distanceLabel: distanceLabel(rec),
-    distanceShort: rec.distanceMeters === undefined ? undefined : formatDistance(rec.distanceMeters),
-    serves: rec.serves.join(", "),
-    insight: rec.reasoning,
-    mapsUrl: rec.mapsUrl,
+    title: pick.venueName,
+    price: priceLabel(pick),
+    priceNote: pick.withinBudget ? `Under RM${budget}` : `Some over RM${budget}`,
+    priceWithinBudget: pick.withinBudget,
+    isHalal: pick.isHalal,
+    isVegetarian: pick.isVegetarian,
+    isVegan: pick.isVegan,
+    allergyNotes: pick.allergyNotes,
+    distanceLabel: distanceLabel(pick),
+    distanceShort: pick.distanceMeters === undefined ? undefined : formatDistance(pick.distanceMeters),
+    serves: pick.serves.join(", "),
+    insight: pick.reasoning,
+    mapsUrl: pick.mapsUrl,
   };
 }

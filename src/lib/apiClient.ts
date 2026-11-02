@@ -1,4 +1,4 @@
-import type { DecideRequestPayload, DecideResponseData } from "@/lib/decide/types";
+import type { DecideRequestPayload, DecideResponseData } from "@/app/api/decide/route";
 import type { RoomInfo } from "@/app/api/group/members/route";
 import type { JoinMemberPayload } from "@/app/api/group/join/route";
 import type { GroupResolveResponse } from "@/app/api/group/resolve/route";
@@ -39,14 +39,11 @@ export const getRoom = (roomCode: string) =>
 
 export type { RoomInfo, GroupResolveResponse };
 
-// Dietary tags that are real restrictions; "Budget Meal" is a price preference instead.
-const NON_DIETARY_TAGS = ["Budget Meal"];
-
 export function toDecidePayload(filters: FilterDraft): DecideRequestPayload {
   return {
     craving: filters.craving.trim(),
-    maxBudget: filters.tags.includes("Budget Meal") ? Math.min(filters.budget, 10) : filters.budget,
+    maxBudget: filters.budget,
     maxDistanceKm: filters.maxDistanceKm,
-    dietaryRestrictions: effectiveRestrictions(filters.tags.filter((tag) => !NON_DIETARY_TAGS.includes(tag))),
+    dietaryRestrictions: effectiveRestrictions(filters.tags),
   };
 }
